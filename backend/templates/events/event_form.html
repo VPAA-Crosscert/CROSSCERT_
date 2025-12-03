@@ -1,0 +1,296 @@
+{% extends 'events/base.html' %}
+{% load static %}
+
+{% block title %}{% if is_update %}Edit Event{% else %}Create Event{% endif %}{% endblock %}
+
+{% block page_title %}{% if is_update %}Edit Event{% else %}Create New Event{% endif %}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Event Details</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    
+                    <!-- Basic Information -->
+                    <div class="mb-4">
+                        <h6 class="border-bottom pb-2 mb-3">Basic Information</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="id_title" class="form-label">Event Title *</label>
+                                {{ form.title }}
+                                {% if form.title.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {{ form.title.errors.0 }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="id_category" class="form-label">Category *</label>
+                                {{ form.category }}
+                            </div>
+                            <div class="col-12">
+                                <label for="id_description" class="form-label">Description *</label>
+                                {{ form.description }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Date & Time -->
+                    <div class="mb-4">
+                        <h6 class="border-bottom pb-2 mb-3">Date & Time</h6>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="id_date" class="form-label">Date *</label>
+                                {{ form.date }}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="id_start_time" class="form-label">Start Time *</label>
+                                {{ form.start_time }}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="id_end_time" class="form-label">End Time *</label>
+                                {{ form.end_time }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Location & Capacity -->
+                    <div class="mb-4">
+                        <h6 class="border-bottom pb-2 mb-3">Location & Capacity</h6>
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <label for="id_location" class="form-label">Location *</label>
+                                {{ form.location }}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="id_capacity" class="form-label">Capacity *</label>
+                                {{ form.capacity }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Departmental Details (Conditional) -->
+                    <div class="mb-4" id="departmental-details-section">
+                        <h6 class="border-bottom pb-2 mb-3">Departmental Details</h6>
+                        <div class="mb-3">
+                            <label for="id_department" class="form-label">Department</label>
+                            {{ form.department }}
+                        </div>
+                        <div class="mb-3">
+                            <label for="id_departmental_details" class="form-label">Departmental Information (Markdown Supported)</label>
+                            {{ form.departmental_details }}
+                            <div class="form-text">Use Markdown to format your content. <a href="#" data-bs-toggle="modal" data-bs-target="#markdownHelp">Markdown Help</a></div>
+                        </div>
+                        <div class="markdown-preview mt-2" id="markdown-preview"></div>
+                    </div>
+
+                    <!-- Certificate Settings -->
+                    <div class="mb-4">
+                        <h6 class="border-bottom pb-2 mb-3">Certificate Settings</h6>
+                        <div class="mb-3">
+                            <label for="id_certificate_template_image" class="form-label">Certificate Template</label>
+                            {{ form.certificate_template_image }}
+                            <div class="form-text">Upload a landscape-oriented certificate template (PNG, JPG, JPEG, GIF, BMP, or WEBP). <strong>Any size is supported</strong> - just make sure it's wider than it is tall.</div>
+                        </div>
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i> After uploading the template, you can set the text positions on the next screen.
+                        </div>
+                    </div>
+
+                    <!-- Additional Options -->
+                    <div class="mb-4">
+                        <h6 class="border-bottom pb-2 mb-3">Additional Options</h6>
+                        <div class="form-check form-switch mb-3">
+                            {{ form.is_public }}
+                            <label class="form-check-label" for="id_is_public">Make this event public</label>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'event-list' %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left"></i> Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> {% if is_update %}Update Event{% else %}Create Event{% endif %}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <!-- Preview Card -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Preview</h5>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <div id="certificate-preview" class="border p-3 mb-3" style="background-color: #f8f9fa; min-height: 200px;">
+                        <p class="text-muted">Certificate preview will appear here</p>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="refresh-preview">
+                        <i class="fas fa-sync-alt"></i> Refresh Preview
+                    </button>
+                </div>
+                <hr>
+                <h6>Event Status</h6>
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> 
+                    {% if is_update %}
+                        This event is currently <strong>{{ form.instance.get_status_display }}</strong>.
+                    {% else %}
+                        New events are created as <strong>Draft</strong> by default.
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        {% if is_update %}
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Quick Actions</h5>
+            </div>
+            <div class="list-group list-group-flush">
+                <a href="#" class="list-group-item list-group-item-action">
+                    <i class="fas fa-users"></i> View Participants
+                </a>
+                <a href="#" class="list-group-item list-group-item-action">
+                    <i class="fas fa-qrcode"></i> Manage QR Codes
+                </a>
+                <a href="#" class="list-group-item list-group-item-action">
+                    <i class="fas fa-certificate"></i> Generate Certificates
+                </a>
+                {% if form.instance.status == 'draft' %}
+                <a href="#" class="list-group-item list-group-item-action text-success">
+                    <i class="fas fa-check-circle"></i> Publish Event
+                </a>
+                {% endif %}
+                {% if form.instance.status == 'scheduled' %}
+                <a href="#" class="list-group-item list-group-item-action text-primary">
+                    <i class="fas fa-play-circle"></i> Start Event
+                </a>
+                {% endif %}
+                {% if form.instance.status == 'live' %}
+                <a href="#" class="list-group-item list-group-item-action text-warning">
+                    <i class="fas fa-stop-circle"></i> End Event
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Markdown Help Modal -->
+<div class="modal fade" id="markdownHelp" tabindex="-1" aria-labelledby="markdownHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="markdownHelpLabel">Markdown Cheat Sheet</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Text Formatting</h6>
+                        <pre># Heading 1
+## Heading 2
+### Heading 3
+
+*Italic* or _Italic_
+**Bold** or __Bold__
+~~Strikethrough~~
+
+`inline code`
+
+```
+code block
+```</pre>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Lists & Links</h6>
+                        <pre>- Unordered list
+- Another item
+  - Nested item
+
+1. Ordered list
+2. Second item
+
+[Link text](https://example.com)
+![Image alt](image.jpg)</pre>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script>
+    // Show/hide departmental details based on category
+    function toggleDepartmentalDetails() {
+        const category = $('#id_category').val();
+        if (category === 'department') {
+            $('#departmental-details-section').show();
+        } else {
+            $('#departmental-details-section').hide();
+        }
+    }
+
+    // Initialize
+    $(document).ready(function() {
+        // Toggle departmental details on page load
+        toggleDepartmentalDetails();
+        
+        // Toggle on category change
+        $('#id_category').change(toggleDepartmentalDetails);
+        
+        // Live markdown preview
+        $('#id_departmental_details').on('input', function() {
+            const markdown = $(this).val();
+            // In a real implementation, you would use a markdown renderer here
+            // For now, we'll just show the raw markdown
+            $('#markdown-preview').text(markdown);
+        });
+        
+        // Handle file input change for certificate preview
+        $('#id_certificate_template_image').change(function() {
+            const file = this.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    $('#certificate-preview').html(
+                        '<img src="' + e.target.result + '" class="img-fluid" alt="Certificate Preview">'
+                    );
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        // Refresh preview button
+        $('#refresh-preview').click(function() {
+            // This would typically make an AJAX call to render the preview
+            // For now, we'll just show a message
+            const preview = $('#certificate-preview');
+            preview.html('<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Generating preview...</p></div>');
+            
+            setTimeout(function() {
+                preview.html('<div class="alert alert-info">Preview updated. This is a static preview. The actual certificate will include dynamic fields like participant name and date.</div>');
+            }, 1000);
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///C:/Users/Terryl%20Jean/Downloads/crosscertv0/components/theme-provider.tsx"],"sourcesContent":["'use client'\n\nimport { ThemeProvider as NextThemesProvider } from 'next-themes'\nimport { ReactNode } from 'react'\n\ninterface ThemeProviderProps {\n  children: ReactNode\n  attribute?: string\n  defaultTheme?: string\n  enableSystem?: boolean\n}\n\nexport function ThemeProvider({ \n  children, \n  attribute = 'class',\n  defaultTheme = 'light',\n  enableSystem = true \n}: ThemeProviderProps) {\n  return (\n    <NextThemesProvider \n      attribute={attribute} \n      defaultTheme={defaultTheme} \n      enableSystem={enableSystem}\n      storageKey=\"crosscert-theme\"\n    >\n      {children}\n    </NextThemesProvider>\n  )\n}\n"],"names":[],"mappings":";;;;;AAEA;AAFA;;;AAYO,SAAS,cAAc,EAC5B,QAAQ,EACR,YAAY,OAAO,EACnB,eAAe,OAAO,EACtB,eAAe,IAAI,EACA;IACnB,qBACE,4MAAC,mLAAkB;QACjB,WAAW;QACX,cAAc;QACd,cAAc;QACd,YAAW;kBAEV;;;;;;AAGP;KAhBgB"}}]
+}

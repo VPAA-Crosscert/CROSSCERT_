@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 10, "column": 0}, "map": {"version":3,"sources":["file:///C:/Users/Administrator/Downloads/CROSSCERT/CROSSCERT/components/theme-provider.tsx"],"sourcesContent":["'use client'\r\n\r\nimport { ThemeProvider as NextThemesProvider } from 'next-themes'\r\nimport { ReactNode } from 'react'\r\n\r\ninterface ThemeProviderProps {\r\n  children: ReactNode\r\n  attribute?: string\r\n  defaultTheme?: string\r\n  enableSystem?: boolean\r\n}\r\n\r\nexport function ThemeProvider({ \r\n  children, \r\n  attribute = 'class',\r\n  defaultTheme = 'light',\r\n  enableSystem = true \r\n}: ThemeProviderProps) {\r\n  return (\r\n    <NextThemesProvider \r\n      attribute={attribute} \r\n      defaultTheme={defaultTheme} \r\n      enableSystem={enableSystem}\r\n      storageKey=\"crosscert-theme\"\r\n    >\r\n      {children}\r\n    </NextThemesProvider>\r\n  )\r\n}\r\n"],"names":[],"mappings":";;;;;AAEA;AAFA;;;AAYO,SAAS,cAAc,EAC5B,QAAQ,EACR,YAAY,OAAO,EACnB,eAAe,OAAO,EACtB,eAAe,IAAI,EACA;IACnB,qBACE,8OAAC,iKAAkB;QACjB,WAAW;QACX,cAAc;QACd,cAAc;QACd,YAAW;kBAEV;;;;;;AAGP"}}]
+}

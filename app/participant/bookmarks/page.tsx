@@ -66,7 +66,16 @@ export default function BookmarksPage() {
                 key={event.id}
                 className="overflow-hidden border border-border bg-card hover:shadow-lg transition-shadow"
               >
-                <div className="aspect-video bg-gradient-to-br from-secondary/20 to-primary/20" />
+                {(event.coverImage || event.cover_image) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img 
+                    src={event.coverImage || event.cover_image || ''} 
+                    alt={event.name || event.title || 'Event cover'} 
+                    className="w-full aspect-video object-cover"
+                  />
+                ) : (
+                  <div className="aspect-video bg-gradient-to-br from-secondary/20 to-primary/20" />
+                )}
 
                 <div className="p-4 space-y-3">
                   <h3 className="font-semibold text-foreground line-clamp-2">{eventName}</h3>

@@ -22,9 +22,9 @@ export function AdminSidebar() {
 
   const isActive = (href: string) => pathname === href
 
-  const handleLogout = () => {
-    localStorage.removeItem('userRole')
-    localStorage.removeItem('userEmail')
+  const handleLogout = async () => {
+    const { handleLogout: logout } = await import('@/lib/auth-utils')
+    await logout()
     router.push('/')
   }
 

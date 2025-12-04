@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ArrowLeft, Plus, Edit, Trash2, Eye, Calendar } from 'lucide-react'
-import { api } from '@/lib/api-config'
+import { adminApi, apiCall } from '@/lib/api-config'
 
 type AdminEvent = {
   id: number | string
@@ -33,32 +33,71 @@ export default function AdminEvents() {
   useEffect(() => {
     const fetchEvents = async () => {
       try {
-        // Prefer localStorage events to avoid backend calls during local development
-        const existing = localStorage.getItem('crosscert_local_events')
-        if (existing) {
-          const list = JSON.parse(existing) as AdminEvent[]
-          setEvents(Array.isArray(list) ? list : [])
-          return
-        }
-
-        // Fallback: attempt to fetch from API if no local events found
-        const res = await fetch(api.events())
+        // Fetch from API first (prioritize backend data)
+        const eventsUrl = adminApi.events().endsWith('/') ? adminApi.events() : `${adminApi.events()}/`
+        console.log('[Events List] Fetching events from:', eventsUrl)
+        const res = await apiCall.get(eventsUrl)
+        
+        console.log('[Events List] Response status:', res.status, res.statusText)
+        
         if (!res.ok) {
-          console.error('Unable to load events. Status:', res.status)
-          setEvents([])
+          console.error('[Events List] Unable to load events. Status:', res.status, res.statusText)
+          // Fallback to localStorage if API fails
+          const existing = localStorage.getItem('crosscert_local_events')
+          if (existing) {
+            const list = JSON.parse(existing) as AdminEvent[]
+            console.log('[Events List] Using localStorage fallback, events count:', list.length)
+            setEvents(Array.isArray(list) ? list : [])
+          } else {
+            console.log('[Events List] No localStorage fallback available')
+            setEvents([])
+          }
           return
         }
+        
         let data: unknown = []
         try {
           data = await res.json()
+          console.log('[Events List] Raw API response:', data)
         } catch {
-          console.error('Events API did not return JSON. Check NEXT_PUBLIC_API_URL and Django server.')
+          console.error('[Events List] Events API did not return JSON. Check NEXT_PUBLIC_API_URL and Django server.')
           setEvents([])
           return
         }
-        setEvents(Array.isArray(data) ? (data as AdminEvent[]) : [])
+        
+        // Handle paginated response from Django REST Framework
+        // It might return {results: [...]} or a direct array
+        let eventsList: AdminEvent[] = []
+        if (Array.isArray(data)) {
+          eventsList = data as AdminEvent[]
+          console.log('[Events List] Direct array response, events count:', eventsList.length)
+        } else if (data && typeof data === 'object' && 'results' in data && Array.isArray(data.results)) {
+          eventsList = data.results as AdminEvent[]
+          console.log('[Events List] Paginated response (results), events count:', eventsList.length)
+        } else if (data && typeof data === 'object' && 'data' in data && Array.isArray(data.data)) {
+          eventsList = data.data as AdminEvent[]
+          console.log('[Events List] Paginated response (data), events count:', eventsList.length)
+        } else {
+          console.warn('[Events List] Unknown response format:', data)
+        }
+        
+        console.log('[Events List] Final events list:', eventsList)
+        console.log('[Events List] Event IDs:', eventsList.map(e => ({ id: e.id, type: typeof e.id, title: e.title || e.name })))
+        setEvents(eventsList)
       } catch (err) {
-        console.error(err)
+        console.error('Error fetching events:', err)
+        // Fallback to localStorage on error
+        const existing = localStorage.getItem('crosscert_local_events')
+        if (existing) {
+          try {
+            const list = JSON.parse(existing) as AdminEvent[]
+            setEvents(Array.isArray(list) ? list : [])
+          } catch {
+            setEvents([])
+          }
+        } else {
+          setEvents([])
+        }
       } finally {
         setLoading(false)
       }
@@ -71,15 +110,50 @@ export default function AdminEvents() {
     return eventName.toLowerCase().includes(searchTerm.toLowerCase())
   })
 
-  const handleDelete = (id: number | string) => {
-    const remaining = events.filter(e => e.id !== id)
-    setEvents(remaining)
-    try {
-      localStorage.setItem('crosscert_local_events', JSON.stringify(remaining))
-    } catch (err) {
-      console.error('Failed to update localStorage after delete', err)
-    }
+  const handleDelete = async (id: number | string) => {
+    console.log('[Delete Event] Deleting event with ID:', id)
     setShowDeleteConfirm(null)
+    
+    try {
+      // Delete from API
+      const eventUrl = adminApi.eventById(id)
+      console.log('[Delete Event] Deleting from API:', eventUrl)
+      
+      const response = await apiCall.delete(eventUrl)
+      console.log('[Delete Event] Delete response status:', response.status, response.statusText)
+      
+      if (!response.ok) {
+        console.error('[Delete Event] Failed to delete from API:', response.status, response.statusText)
+        const errorText = await response.text().catch(() => 'Unknown error')
+        console.error('[Delete Event] Error details:', errorText)
+        alert(`Failed to delete event: ${response.status} ${response.statusText}`)
+        return
+      }
+      
+      console.log('[Delete Event] ✅ Successfully deleted from API')
+      
+      // Update local state by removing the deleted event
+      const remaining = events.filter(e => String(e.id) !== String(id))
+      setEvents(remaining)
+      console.log('[Delete Event] Updated local state, remaining events:', remaining.length)
+      
+      // Optionally try to clean up localStorage (but don't fail if it's full)
+      try {
+        const existing = localStorage.getItem('crosscert_local_events')
+        if (existing) {
+          const list = JSON.parse(existing) as AdminEvent[]
+          const filtered = list.filter(e => String(e.id) !== String(id))
+          localStorage.setItem('crosscert_local_events', JSON.stringify(filtered))
+          console.log('[Delete Event] Cleaned up localStorage')
+        }
+      } catch (lsErr) {
+        // Ignore localStorage errors (it might be full, that's okay)
+        console.warn('[Delete Event] Could not update localStorage (quota may be exceeded):', lsErr)
+      }
+    } catch (err: any) {
+      console.error('[Delete Event] Error during delete:', err)
+      alert(`Failed to delete event: ${err.message || 'Unknown error'}`)
+    }
   }
 
   return (

@@ -7,6 +7,7 @@ from django.views.decorators.http import require_http_methods
 from django.middleware.csrf import get_token
 from django.http import JsonResponse
 from django.contrib.auth.models import User
+from participants.models import UserProfile
 import json
 
 
@@ -40,13 +41,30 @@ def login_endpoint(request):
             login(request, user)
             # Set CSRF token in response
             csrf_token = get_token(request)
+            
+            # Get user profile if it exists
+            profile_data = {}
+            try:
+                profile = user.profile
+                profile_data = {
+                    'department': profile.department,
+                    'program': profile.program,
+                    'birthday': profile.birthday.isoformat() if profile.birthday else None,
+                }
+            except UserProfile.DoesNotExist:
+                pass
+            
             return JsonResponse({
                 'success': True,
                 'user': {
                     'id': user.id,
                     'username': user.username,
                     'email': user.email,
+                    'name': user.get_full_name() or user.username,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
                     'is_staff': user.is_staff,
+                    **profile_data,
                 },
                 'csrf_token': csrf_token,
             })
@@ -92,14 +110,31 @@ def csrf_token_endpoint(request):
 def current_user_endpoint(request):
     """Get current authenticated user info."""
     if request.user.is_authenticated:
+        user = request.user
+        # Get user profile if it exists
+        profile_data = {}
+        try:
+            profile = user.profile
+            profile_data = {
+                'department': profile.department,
+                'program': profile.program,
+                'birthday': profile.birthday.isoformat() if profile.birthday else None,
+            }
+        except UserProfile.DoesNotExist:
+            pass
+        
         return JsonResponse({
             'authenticated': True,
             'user': {
-                'id': request.user.id,
-                'username': request.user.username,
-                'email': request.user.email,
-                'is_staff': request.user.is_staff,
-                'is_superuser': request.user.is_superuser,
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'name': user.get_full_name() or user.username,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'is_staff': user.is_staff,
+                'is_superuser': user.is_superuser,
+                **profile_data,
             },
         })
     else:

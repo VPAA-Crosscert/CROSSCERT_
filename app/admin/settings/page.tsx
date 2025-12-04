@@ -8,9 +8,9 @@ import { ArrowLeft, Bell, Lock, Users } from 'lucide-react'
 export default function AdminSettings() {
   const router = useRouter()
 
-  const handleLogout = () => {
-    localStorage.removeItem('userRole')
-    localStorage.removeItem('userEmail')
+  const handleLogout = async () => {
+    const { handleLogout: logout } = await import('@/lib/auth-utils')
+    await logout()
     router.push('/')
   }
 

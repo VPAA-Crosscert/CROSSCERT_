@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
 from django.contrib.auth import get_user_model
-from .models import Evaluation
+from .models import Evaluation, UserProfile
 from .serializers import EvaluationSerializer
 from events.models import CheckIn
 from certificates.generator import CertificateService
@@ -32,6 +32,8 @@ class ParticipantViewSet(viewsets.ViewSet):
         email = request.data.get('email', '').strip()
         password = request.data.get('password', '').strip()
         full_name = request.data.get('name', '').strip()
+        department = request.data.get('department', '').strip()
+        program = request.data.get('program', '').strip()
 
         if not email or not password or not full_name:
             return Response({'detail': 'Name, email and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -53,7 +55,20 @@ class ParticipantViewSet(viewsets.ViewSet):
             last_name=last_name,
         )
 
-        return Response({'id': user.id, 'email': user.email}, status=status.HTTP_201_CREATED)
+        # Create user profile with department and program
+        UserProfile.objects.create(
+            user=user,
+            department=department,
+            program=program,
+        )
+
+        return Response({
+            'id': user.id,
+            'email': user.email,
+            'name': user.get_full_name() or full_name,
+            'department': department,
+            'program': program,
+        }, status=status.HTTP_201_CREATED)
 
 
 class EvaluationViewSet(viewsets.ModelViewSet):

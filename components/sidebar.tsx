@@ -90,8 +90,9 @@ export function Sidebar() {
             variant="outline"
             size="sm"
             className="w-full justify-start text-destructive text-xs sm:text-sm"
-            onClick={() => {
-              // TODO: Handle logout
+            onClick={async () => {
+              const { handleLogout: logout } = await import('@/lib/auth-utils')
+              await logout()
               router.push('/')
               setIsOpen(false)
             }}

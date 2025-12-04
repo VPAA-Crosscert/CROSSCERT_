@@ -6,10 +6,31 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft, Calendar, Users, CheckCircle, Award } from 'lucide-react'
 import { getStoredEvents } from '@/lib/event-context'
 import { useState, useEffect } from 'react'
+import { adminApi, apiCall } from '@/lib/api-config'
+
+type DashboardEvent = {
+  id: number | string
+  title?: string
+  name?: string
+  date?: string
+  start_time?: string
+  startTime?: string
+  end_time?: string
+  endTime?: string
+  location?: string
+  venue?: string
+  cover_image?: string
+  coverImage?: string
+  participants?: number
+  attended?: number
+  certificates?: number
+  registration_count?: number
+}
 
 export default function AdminDashboard() {
   const router = useRouter()
-  const [events, setEvents] = useState<any[]>([])
+  const [events, setEvents] = useState<DashboardEvent[]>([])
+  const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({
     totalEvents: 0,
     totalParticipants: 0,
@@ -18,19 +39,98 @@ export default function AdminDashboard() {
   })
 
   useEffect(() => {
-    const storedEvents = getStoredEvents()
-    setEvents(storedEvents.slice(0, 5))
+    const fetchEvents = async () => {
+      try {
+        // Fetch from API first (prioritize backend data)
+        const eventsUrl = adminApi.events().endsWith('/') ? adminApi.events() : `${adminApi.events()}/`
+        console.log('[Dashboard] Fetching events from:', eventsUrl)
+        const res = await apiCall.get(eventsUrl)
+        
+        console.log('[Dashboard] Response status:', res.status, res.statusText)
+        
+        let eventsList: DashboardEvent[] = []
+        
+        if (!res.ok) {
+          console.warn('[Dashboard] Unable to load events from API. Status:', res.status, res.statusText)
+          // Fallback to localStorage if API fails
+          const storedEvents = getStoredEvents()
+          eventsList = storedEvents as DashboardEvent[]
+          console.log('[Dashboard] Using localStorage fallback, events count:', eventsList.length)
+        } else {
+          let data: unknown = []
+          try {
+            data = await res.json()
+            console.log('[Dashboard] Raw API response:', data)
+          } catch {
+            console.error('[Dashboard] Events API did not return JSON.')
+            const storedEvents = getStoredEvents()
+            eventsList = storedEvents as DashboardEvent[]
+          }
+          
+          // Handle paginated response from Django REST Framework
+          if (Array.isArray(data)) {
+            eventsList = data as DashboardEvent[]
+            console.log('[Dashboard] Direct array response, events count:', eventsList.length)
+          } else if (data && typeof data === 'object' && 'results' in data && Array.isArray(data.results)) {
+            eventsList = data.results as DashboardEvent[]
+            console.log('[Dashboard] Paginated response (results), events count:', eventsList.length)
+          } else if (data && typeof data === 'object' && 'data' in data && Array.isArray(data.data)) {
+            eventsList = data.data as DashboardEvent[]
+            console.log('[Dashboard] Paginated response (data), events count:', eventsList.length)
+          } else {
+            console.warn('[Dashboard] Unknown response format, falling back to localStorage')
+            const storedEvents = getStoredEvents()
+            eventsList = storedEvents as DashboardEvent[]
+          }
+        }
+        
+        console.log('[Dashboard] Final events list:', eventsList)
+        console.log('[Dashboard] Event IDs:', eventsList.map(e => ({ id: e.id, title: e.title || e.name })))
+        
+        // Set recent events (first 5, sorted by date if available)
+        const sortedEvents = [...eventsList].sort((a, b) => {
+          const dateA = a.date ? new Date(a.date).getTime() : 0
+          const dateB = b.date ? new Date(b.date).getTime() : 0
+          return dateB - dateA // Most recent first
+        })
+        setEvents(sortedEvents.slice(0, 5))
+        
+        // Calculate stats
+        const totalParticipants = eventsList.reduce((sum, event) => {
+          return sum + (event.participants || event.registration_count || 0)
+        }, 0)
+        const attendedToday = eventsList.reduce((sum, event) => sum + (event.attended || 0), 0)
+        const certificatesIssued = eventsList.reduce((sum, event) => sum + (event.certificates || 0), 0)
+        
+        setStats({
+          totalEvents: eventsList.length,
+          totalParticipants,
+          attendedToday,
+          certificatesIssued,
+        })
+      } catch (err) {
+        console.error('[Dashboard] Error fetching events:', err)
+        // Fallback to localStorage on error
+        const storedEvents = getStoredEvents()
+        const eventsList = storedEvents as DashboardEvent[]
+        setEvents(eventsList.slice(0, 5))
+        
+        const totalParticipants = eventsList.reduce((sum, event) => sum + (event.participants || 0), 0)
+        const attendedToday = eventsList.reduce((sum, event) => sum + (event.attended || 0), 0)
+        const certificatesIssued = eventsList.reduce((sum, event) => sum + (event.certificates || 0), 0)
+        
+        setStats({
+          totalEvents: eventsList.length,
+          totalParticipants,
+          attendedToday,
+          certificatesIssued,
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
     
-    const totalParticipants = storedEvents.reduce((sum, event) => sum + (event.participants || 0), 0)
-    const attendedToday = storedEvents.reduce((sum, event) => sum + (event.attended || 0), 0)
-    const certificatesIssued = storedEvents.reduce((sum, event) => sum + (event.certificates || 0), 0)
-    
-    setStats({
-      totalEvents: storedEvents.length,
-      totalParticipants,
-      attendedToday,
-      certificatesIssued,
-    })
+    fetchEvents()
   }, [])
 
   const statsArray = [
@@ -116,7 +216,9 @@ export default function AdminDashboard() {
       {/* Recent Events */}
       <Card className="p-6 border border-border bg-card">
         <h2 className="text-xl font-semibold text-foreground mb-4">Recent Events</h2>
-        {events.length > 0 ? (
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading events...</p>
+        ) : events.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {events.map((event) => (
               <div key={event.id} className="border border-border rounded-lg overflow-hidden bg-background hover:shadow-sm transition-shadow cursor-pointer" onClick={() => router.push(`/admin/events/${event.id}`)}>

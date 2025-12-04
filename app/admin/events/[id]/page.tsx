@@ -5,46 +5,154 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, MapPin, Calendar, Users, Edit, Trash2 } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { getEventById } from '@/lib/event-context'
+import { getEventById, getStoredEvents } from '@/lib/event-context'
 import { Event } from '@/lib/event-context'
+import { adminApi, apiCall } from '@/lib/api-config'
 
 export default function AdminEventDetail() {
   const router = useRouter()
   const params = useParams()
   const [event, setEvent] = useState<Event | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const foundEvent = getEventById(params.id as string)
-    setEvent(foundEvent)
+    const fetchEvent = async () => {
+      const eventId = params.id as string
+      console.log('[Event Detail] ========================================')
+      console.log('[Event Detail] Looking for event with ID:', eventId)
+      console.log('[Event Detail] Event ID type:', typeof eventId)
+      console.log('[Event Detail] ========================================')
+      
+      // First try to fetch from API
+      try {
+        const eventUrl = adminApi.eventById(eventId)
+        console.log('[Event Detail] Fetching from API:', eventUrl)
+        
+        const response = await apiCall.get(eventUrl)
+        console.log('[Event Detail] API response status:', response.status, response.statusText)
+        
+        if (response.ok) {
+          const apiEvent = await response.json()
+          console.log('[Event Detail] ✅ Event found in API!')
+          console.log('[Event Detail] Event ID from API:', apiEvent.id, 'Type:', typeof apiEvent.id)
+          console.log('[Event Detail] Event title:', apiEvent.title)
+          console.log('[Event Detail] Full event data:', JSON.stringify(apiEvent, null, 2))
+          
+          // Always set the event if API returns it (the API endpoint should match the ID)
+          setEvent(apiEvent as Event)
+          setLoading(false)
+          console.log('[Event Detail] ✅ Event set successfully')
+          return
+        } else {
+          console.warn('[Event Detail] ❌ API request failed, status:', response.status)
+          try {
+            const errorData = await response.json()
+            console.warn('[Event Detail] Error response (JSON):', errorData)
+          } catch {
+            const errorText = await response.text()
+            console.warn('[Event Detail] Error response (text):', errorText)
+          }
+        }
+      } catch (apiErr) {
+        console.error('[Event Detail] ❌ API fetch error:', apiErr)
+      }
+      
+      // Fallback to localStorage
+      console.log('[Event Detail] Falling back to localStorage search')
+      const storedEvents = getStoredEvents()
+      console.log('[Event Detail] Stored events count:', storedEvents.length)
+      console.log('[Event Detail] Stored events IDs:', storedEvents.map(e => ({ id: e.id, type: typeof e.id, title: e.title || e.name })))
+      
+      const foundEvent = getEventById(eventId)
+      console.log('[Event Detail] Found event in localStorage:', foundEvent)
+      
+      if (foundEvent) {
+        console.log('[Event Detail] ✅ Event found in localStorage')
+        console.log('[Event Detail] Event ID from localStorage:', foundEvent.id, 'Type:', typeof foundEvent.id)
+      } else {
+        console.log('[Event Detail] ❌ Event NOT found in localStorage')
+      }
+      
+      setEvent(foundEvent)
+      setLoading(false)
+    }
+    
+    fetchEvent()
   }, [params.id])
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
+    const eventId = params.id as string
+    console.log('[Delete Event] Deleting event with ID:', eventId)
+    setShowDeleteConfirm(false)
+    
     try {
-      const existingNew = JSON.parse(localStorage.getItem('crosscert_local_events') || '[]')
-      const filteredNew = existingNew.filter((e: Event) => String(e.id) !== String(params.id))
-      localStorage.setItem('crosscert_local_events', JSON.stringify(filteredNew))
-    } catch (err) {
-      console.warn('Failed to update crosscert_local_events', err)
+      // Delete from API
+      const eventUrl = adminApi.eventById(eventId)
+      console.log('[Delete Event] Deleting from API:', eventUrl)
+      
+      const response = await apiCall.delete(eventUrl)
+      console.log('[Delete Event] Delete response status:', response.status, response.statusText)
+      
+      if (!response.ok) {
+        console.error('[Delete Event] Failed to delete from API:', response.status, response.statusText)
+        const errorText = await response.text().catch(() => 'Unknown error')
+        console.error('[Delete Event] Error details:', errorText)
+        alert(`Failed to delete event: ${response.status} ${response.statusText}`)
+        setShowDeleteConfirm(true) // Re-show the modal if delete failed
+        return
+      }
+      
+      console.log('[Delete Event] ✅ Successfully deleted from API')
+      
+      // Optionally try to clean up localStorage (but don't fail if it's full)
+      try {
+        const existingNew = localStorage.getItem('crosscert_local_events')
+        if (existingNew) {
+          const filteredNew = JSON.parse(existingNew).filter((e: Event) => String(e.id) !== String(eventId))
+          localStorage.setItem('crosscert_local_events', JSON.stringify(filteredNew))
+          console.log('[Delete Event] Cleaned up crosscert_local_events')
+        }
+        const existingOld = localStorage.getItem('events')
+        if (existingOld) {
+          const filteredOld = JSON.parse(existingOld).filter((e: Event) => String(e.id) !== String(eventId))
+          localStorage.setItem('events', JSON.stringify(filteredOld))
+          console.log('[Delete Event] Cleaned up legacy events key')
+        }
+      } catch (lsErr) {
+        // Ignore localStorage errors (it might be full, that's okay)
+        console.warn('[Delete Event] Could not update localStorage (quota may be exceeded):', lsErr)
+      }
+      
+      // Redirect to events list
+      router.push('/admin/events')
+    } catch (err: any) {
+      console.error('[Delete Event] Error during delete:', err)
+      alert(`Failed to delete event: ${err.message || 'Unknown error'}`)
+      setShowDeleteConfirm(true) // Re-show the modal if delete failed
     }
-    try {
-      const existingOld = JSON.parse(localStorage.getItem('events') || '[]')
-      const filteredOld = existingOld.filter((e: Event) => String(e.id) !== String(params.id))
-      localStorage.setItem('events', JSON.stringify(filteredOld))
-    } catch (err) {
-      console.warn('Failed to update legacy events key', err)
-    }
-    router.push('/admin/events')
   }
 
   const handleEdit = () => {
     router.push(`/admin/events/${params.id}/edit`)
   }
 
+  if (loading) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-muted-foreground">Loading event...</p>
+      </div>
+    )
+  }
+
   if (!event) {
+    console.error('[Event Detail] Event not found!')
+    console.error('[Event Detail] Searched ID:', params.id)
+    console.error('[Event Detail] ID type:', typeof params.id)
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">Event not found</p>
+        <p className="text-sm text-muted-foreground mt-2">ID: {params.id}</p>
         <Button onClick={() => router.back()} className="mt-4">Back</Button>
       </div>
     )
@@ -70,7 +178,7 @@ export default function AdminEventDetail() {
           className="w-full aspect-video object-cover rounded-lg border border-border"
         />
       ) : (
-        <div className="aspect-video bg-gradient-to-br from-secondary/20 to-primary/20 rounded-lg border border-border" />
+        <div className="aspect-video bg-linear-to-br from-secondary/20 to-primary/20 rounded-lg border border-border" />
       )}
 
       {/* Content */}

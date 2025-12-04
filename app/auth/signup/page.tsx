@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import { ArrowLeft, Mail, Lock, User, ChevronDown } from 'lucide-react'
-import { api } from '@/lib/api-config'
+import { api, apiCall } from '@/lib/api-config'
 
 const DEPARTMENTS = {
   'College of Criminal Justice Education': ['Bachelor of Science in Criminology'],
@@ -100,25 +100,45 @@ export default function SignUp() {
         name: formData.name,
         email: formData.email,
         password: formData.password,
+        department: formData.department,
+        program: formData.program,
       }
 
-      const res = await fetch(`${api.participants?.() ?? ''}/register/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
+      // Build the correct URL - api.participants() returns URL with trailing slash
+      const participantsBaseUrl = api.participants()
+      const registerUrl = participantsBaseUrl.endsWith('/') 
+        ? `${participantsBaseUrl}register/`
+        : `${participantsBaseUrl}/register/`
+      
+      console.log('[Signup] ========================================')
+      console.log('[Signup] Registering new participant')
+      console.log('[Signup] Name:', formData.name)
+      console.log('[Signup] Email:', formData.email)
+      console.log('[Signup] Department:', formData.department)
+      console.log('[Signup] Program:', formData.program)
+      console.log('[Signup] Register URL:', registerUrl)
+      console.log('[Signup] Payload:', { name: formData.name, email: formData.email, password: '***' })
+      
+      const res = await apiCall.post(registerUrl, payload)
+      console.log('[Signup] Response status:', res.status, res.statusText)
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        setError(data.detail || 'Unable to create account.')
+        console.error('[Signup] Registration failed:', data)
+        setError(data.detail || data.error || 'Unable to create account.')
         setIsLoading(false)
         return
       }
 
+      const responseData = await res.json().catch(() => ({}))
+      console.log('[Signup] ✅ Registration successful:', responseData)
+
+      // Save minimal user data to localStorage (only for session management)
       localStorage.setItem('userRole', 'participant')
       localStorage.setItem('userEmail', formData.email)
-      localStorage.setItem('userDepartment', formData.department)
-      localStorage.setItem('userProgram', formData.program)
+      localStorage.setItem('userId', responseData.id?.toString() || '')
+      
+      console.log('[Signup] User session data saved')
       router.push('/participant/dashboard')
     } catch (err) {
       setError('Network error while creating account.')

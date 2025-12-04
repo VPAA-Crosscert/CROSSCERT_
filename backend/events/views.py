@@ -22,34 +22,10 @@ from crosscert.email_utils import (
     send_post_event_evaluation_email,
     send_event_created_notification,
 )
-import qrcode
-import io
-import base64
 import uuid
-from reportlab.graphics.barcode import code128
-from reportlab.graphics.shapes import Drawing
-from reportlab.graphics import renderPM
+
 from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
-
-
-def _generate_qr_code(data: str) -> str:
-    qr = qrcode.QRCode(version=1, box_size=8, border=4)
-    qr.add_data(data)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    buffer = io.BytesIO()
-    img.save(buffer, 'PNG')
-    buffer.seek(0)
-    return base64.b64encode(buffer.getvalue()).decode()
-
-
-def _generate_barcode_image(data: str) -> str:
-    barcode = code128.Code128(data, barHeight=40, barWidth=1.2)
-    drawing = Drawing(barcode.width + 20, barcode.height + 20)
-    drawing.add(barcode, name='barcode')
-    png_bytes = renderPM.drawToString(drawing, fmt='PNG')
-    return base64.b64encode(png_bytes).decode()
 
 
 def _build_registration_code(registration: EventRegistration) -> str:
@@ -95,7 +71,9 @@ class EventViewSet(viewsets.ModelViewSet):
         event.generate_code_prefix()
         registration_url = event.build_registration_link()
         event.registration_url = registration_url
-        event.event_qr_code = _generate_qr_code(registration_url)
+        # Event QR code image generation moved to frontend
+        # Frontend can generate QR code from registration_url if needed
+        event.event_qr_code = ""  # Empty - frontend will generate if needed
         event.save(update_fields=['code_prefix', 'registration_url', 'event_qr_code'])
 
         # Notify organizer that event has been created
@@ -120,6 +98,22 @@ class EventRegistrationViewSet(viewsets.ModelViewSet):
     queryset = EventRegistration.objects.all()
     serializer_class = EventRegistrationSerializer
 
+    def get_queryset(self):
+        """Filter registrations by email and event if provided in query params."""
+        queryset = EventRegistration.objects.all()
+        
+        # Filter by email if provided
+        email = self.request.query_params.get('email', None)
+        if email:
+            queryset = queryset.filter(email=email)
+        
+        # Filter by event if provided
+        event_id = self.request.query_params.get('event', None)
+        if event_id:
+            queryset = queryset.filter(event_id=event_id)
+        
+        return queryset
+
     def create(self, request, *args, **kwargs):
         """Register a participant for an event."""
         serializer = self.get_serializer(data=request.data)
@@ -130,8 +124,11 @@ class EventRegistrationViewSet(viewsets.ModelViewSet):
         registration.refresh_from_db()
         code_value = _build_registration_code(registration)
         registration.qr_code_value = code_value
-        registration.qr_code = _generate_qr_code(code_value)
-        registration.barcode_image = _generate_barcode_image(code_value)
+        # QR code image is now generated on the frontend from qr_code_value
+        # No need to store base64 image in database
+        registration.qr_code = ""  # Empty - frontend will generate
+        registration.barcode_image = ""  # Empty - not used
+        
         registration.save(update_fields=['qr_code_value', 'qr_code', 'barcode_image'])
 
         # Send registration confirmation email

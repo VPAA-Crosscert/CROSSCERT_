@@ -28,6 +28,7 @@ export interface Event {
   category?: string
   department?: string
   status?: 'Upcoming' | 'Ongoing' | 'Completed'
+  code_prefix?: string // Backend property for event code prefix
 }
 
 export interface RegistrationStatus {
@@ -49,10 +50,56 @@ export const getEventById = (id: string | number): Event | null => {
   return events.find(e => e.id === id || e.id === parseInt(id as string)) || null
 }
 
+// Cache for user department to avoid repeated API calls
+let userDepartmentCache: string | null = null
+let userDepartmentCacheTime: number = 0
+const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+
 export const getDepartmentFromUser = (): string => {
   if (typeof window === 'undefined') return ''
-  const department = localStorage.getItem('userDepartment')
-  return department || ''
+  
+  // Return cached value if still valid
+  if (userDepartmentCache && Date.now() - userDepartmentCacheTime < CACHE_DURATION) {
+    return userDepartmentCache
+  }
+  
+  // Try to fetch from API (async, but return empty for now)
+  // Components should use fetchUserDepartment() instead
+  return ''
+}
+
+export const fetchUserDepartment = async (): Promise<string> => {
+  if (typeof window === 'undefined') return ''
+  
+  // Return cached value if still valid
+  if (userDepartmentCache && Date.now() - userDepartmentCacheTime < CACHE_DURATION) {
+    return userDepartmentCache
+  }
+  
+  try {
+    const { authApi, apiRequest } = await import('@/lib/api-config')
+    const response = await apiRequest(authApi.me(), {
+      method: 'GET',
+    })
+    
+    if (response.ok) {
+      const data = await response.json()
+      if (data.authenticated && data.user && data.user.department) {
+        userDepartmentCache = data.user.department
+        userDepartmentCacheTime = Date.now()
+        return data.user.department
+      }
+    }
+  } catch (err) {
+    console.error('[event-context] Error fetching user department:', err)
+  }
+  
+  return ''
+}
+
+export const clearUserDepartmentCache = (): void => {
+  userDepartmentCache = null
+  userDepartmentCacheTime = 0
 }
 
 export const getRegistrationStatus = (eventId: string | number): RegistrationStatus['status'] => {

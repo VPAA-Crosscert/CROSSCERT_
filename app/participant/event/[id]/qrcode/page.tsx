@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react'
 import { ArrowLeft, X, Download } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { api } from '@/lib/api-config'
+import { api, apiCall, getAuthenticatedUserEmail, authApi, apiRequest } from '@/lib/api-config'
+import { QRCodeSVG } from 'qrcode.react'
 
 type RegistrationPayload = {
   id: number
@@ -14,7 +15,6 @@ type RegistrationPayload = {
   email: string
   qr_code: string | null
   qr_code_value: string | null
-  barcode_image: string | null
 }
 
 export default function ParticipantQRCode() {
@@ -24,26 +24,58 @@ export default function ParticipantQRCode() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [registration, setRegistration] = useState<RegistrationPayload | null>(null)
+  const [userProfile, setUserProfile] = useState<{ department?: string; program?: string } | null>(null)
 
   useEffect(() => {
     const fetchRegistration = async () => {
       const eventId = params.id as string
-      const email = typeof window !== 'undefined' ? localStorage.getItem('userEmail') : null
+      
+      // Get authenticated user's email from API session (not localStorage)
+      const email = await getAuthenticatedUserEmail()
       if (!email) {
         setError('You must be signed in to view your QR code.')
         setLoading(false)
         return
       }
+      
+      console.log('[QR Code] Authenticated user email:', email)
+      
+      // Fetch user profile for department/program
+      try {
+        const profileResponse = await apiRequest(authApi.me(), { method: 'GET' })
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json()
+          if (profileData.authenticated && profileData.user) {
+            setUserProfile({
+              department: profileData.user.department || '',
+              program: profileData.user.program || '',
+            })
+          }
+        }
+      } catch (err) {
+        console.warn('[QR Code] Could not fetch user profile:', err)
+      }
 
       try {
-        const url = `${api.registrations()}/?event=${encodeURIComponent(eventId)}&email=${encodeURIComponent(email)}`
-        const res = await fetch(url)
+        // api.registrations() already ends with /, so we use ? not /?
+        const baseUrl = api.registrations().endsWith('/') 
+          ? api.registrations().slice(0, -1) 
+          : api.registrations()
+        const url = `${baseUrl}/?event=${encodeURIComponent(eventId)}&email=${encodeURIComponent(email)}`
+        console.log('[QR Code] Fetching registration from:', url)
+        const res = await apiCall.get(url)
         if (!res.ok) throw new Error('Unable to load registration data.')
         const data = await res.json()
-        if (!Array.isArray(data) || data.length === 0) {
+        
+        // Handle paginated response
+        const registrations = Array.isArray(data) 
+          ? data 
+          : (data.results || data.data || [])
+        
+        if (registrations.length === 0) {
           setError('No registration found for this event.')
         } else {
-          setRegistration(data[0])
+          setRegistration(registrations[0])
         }
       } catch (err: any) {
         setError(err.message ?? 'Unable to load your QR code.')
@@ -88,7 +120,7 @@ export default function ParticipantQRCode() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-muted p-4 rounded-lg border border-border space-y-2">
                 <h2 className="text-lg font-semibold text-foreground">
                   {registration ? `${registration.first_name} ${registration.last_name}` : 'Participant'}
@@ -97,46 +129,49 @@ export default function ParticipantQRCode() {
                 <div className="h-px bg-border" />
                 <div className="text-sm">
                   <p className="text-muted-foreground">Department</p>
-                  <p className="font-medium text-foreground">College of Engineering</p>
+                  <p className="font-medium text-foreground">
+                    {userProfile?.department || 'Not set'}
+                  </p>
                 </div>
                 <div className="text-sm">
                   <p className="text-muted-foreground">Program</p>
-                  <p className="font-medium text-foreground">BS Computer Engineering</p>
+                  <p className="font-medium text-foreground">
+                    {userProfile?.program || 'Not set'}
+                  </p>
                 </div>
               </div>
 
               <div className="bg-muted p-4 rounded-lg border border-border flex items-center justify-center">
-                <div className="aspect-square w-full max-w-56 bg-white rounded flex items-center justify-center">
+                <div className="aspect-square w-full max-w-56 bg-white rounded flex items-center justify-center p-2">
                   {registration?.qr_code ? (
+                    // Use backend-generated QR code if available
                     <img
                       src={`data:image/png;base64,${registration.qr_code}`}
                       alt="QR Code"
                       className="w-40 h-40 object-contain"
                     />
-                  ) : (
-                    <div className="w-40 h-40 bg-gray-200 rounded flex items-center justify-center text-xs text-gray-500">
-                      QR not available
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="bg-muted p-4 rounded-lg border border-border flex items-center justify-center">
-                <div className="w-full max-w-56 h-24 bg-white rounded flex items-center justify-center text-xs text-gray-500">
-                  {registration?.barcode_image ? (
-                    <img
-                      src={`data:image/png;base64,${registration.barcode_image}`}
-                      alt="Barcode"
-                      className="w-full h-full object-contain"
+                  ) : registration?.qr_code_value ? (
+                    // Generate QR code on frontend using qr_code_value
+                    <QRCodeSVG
+                      value={registration.qr_code_value}
+                      size={160}
+                      level="H"
+                      includeMargin={true}
                     />
                   ) : (
-                    'Barcode not available'
+                    // Fallback: generate QR code using registration ID and email
+                    <QRCodeSVG
+                      value={`REG-${params.id}-${registration?.email || ''}`}
+                      size={160}
+                      level="H"
+                      includeMargin={true}
+                    />
                   )}
                 </div>
               </div>
 
               <div className="bg-muted p-4 rounded-lg border border-border text-center flex flex-col items-center justify-center">
-                <p className="text-xs text-muted-foreground mb-2">Code</p>
+                <p className="text-xs text-muted-foreground mb-2">Registration Code</p>
                 <p className="font-mono text-lg font-bold text-foreground break-all">
                   {registration?.qr_code_value ?? '—'}
                 </p>

@@ -2,7 +2,19 @@
 Participant models for CROSSCERT.
 """
 from django.db import models
+from django.contrib.auth.models import User
 from events.models import EventRegistration
+
+
+class UserProfile(models.Model):
+    """User profile model to store additional user information."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    department = models.CharField(max_length=200, blank=True)
+    program = models.CharField(max_length=200, blank=True)
+    birthday = models.DateField(null=True, blank=True)
+    
+    def __str__(self):
+        return f"Profile for {self.user.email}"
 
 
 class Evaluation(models.Model):

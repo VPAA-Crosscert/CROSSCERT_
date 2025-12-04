@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import { adminApi, apiRequest, authApi } from '@/lib/api-config'
+import { adminApi, apiRequest, authApi, apiCall } from '@/lib/api-config'
 
 const COLLEGES = {
   'College of Criminal Justice Education': [],
@@ -190,12 +190,11 @@ export default function CreateEventPage() {
   }
 
   const handleCreateEvent = async () => {
-    // Save event locally in localStorage instead of posting to backend
+    // Post event to backend API
     setIsLoading(true)
     setError('')
     try {
       const payload = {
-        id: `local-${Date.now()}`,
         title: eventName,
         description: eventDescription,
         date: eventDate,
@@ -225,22 +224,55 @@ export default function CreateEventPage() {
           event_title: sampleEventTitle || eventName,
           date: sampleDate || eventDate,
         },
-        created_at: new Date().toISOString(),
-        is_local: true,
       }
 
-      try {
-        const existing = localStorage.getItem('crosscert_local_events')
-        const list = existing ? JSON.parse(existing) : []
-        list.push(payload)
-        localStorage.setItem('crosscert_local_events', JSON.stringify(list))
-      } catch (lsErr) {
-        console.error('Failed to write to localStorage', lsErr)
-        throw new Error('Unable to save event locally')
+      // Post to backend API (ensure trailing slash for Django REST Framework)
+      const eventsUrl = adminApi.events().endsWith('/') ? adminApi.events() : `${adminApi.events()}/`
+      console.log('[Create Event] Posting to:', eventsUrl, payload)
+      
+      const response = await apiCall.post(eventsUrl, payload)
+      
+      console.log('[Create Event] Response status:', response.status, response.statusText)
+      
+      if (!response.ok) {
+        let errorMessage = `Failed to create event: ${response.status} ${response.statusText}`
+        try {
+          const errorData = await response.json()
+          console.error('[Create Event] Error response:', errorData)
+          errorMessage = errorData.error || errorData.detail || errorMessage
+          // Handle validation errors
+          if (errorData.title || errorData.date || errorData.start_time) {
+            const validationErrors = Object.entries(errorData)
+              .filter(([key]) => key !== 'error' && key !== 'detail')
+              .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
+              .join('; ')
+            if (validationErrors) {
+              errorMessage = `Validation errors: ${validationErrors}`
+            }
+          }
+        } catch {
+          // If JSON parsing fails, use status text
+        }
+        throw new Error(errorMessage)
       }
 
+      const createdEvent = await response.json()
+      console.log('[Create Event] Success! Created event:', createdEvent)
+      console.log('[Create Event] Event ID:', createdEvent.id)
+      console.log('[Create Event] Event title:', createdEvent.title)
+      console.log('[Create Event] Full response:', JSON.stringify(createdEvent, null, 2))
+      
       setIsLoading(false)
-      router.push('/admin/events')
+      
+      // Redirect to the event detail page using the ID from the API response
+      if (createdEvent.id) {
+        console.log('[Create Event] Redirecting to event detail page:', `/admin/events/${createdEvent.id}`)
+        router.push(`/admin/events/${createdEvent.id}`)
+      } else {
+        console.warn('[Create Event] No ID in response, redirecting to events list')
+        router.push('/admin/events')
+      }
+      router.refresh()
     } catch (err: any) {
       setError(err.message || 'Unable to create event right now.')
       setIsLoading(false)

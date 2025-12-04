@@ -54,7 +54,7 @@ export default function SignIn() {
         return
       }
 
-      // Store user info in localStorage
+      // Store minimal user info in localStorage (only for session management)
       localStorage.setItem('userEmail', data.user.email)
       localStorage.setItem('userId', data.user.id.toString())
       localStorage.setItem('isStaff', data.user.is_staff.toString())
@@ -62,6 +62,9 @@ export default function SignIn() {
       // Determine role based on is_staff flag
       const userRole = data.user.is_staff ? 'admin' : 'participant'
       localStorage.setItem('userRole', userRole)
+
+      // Note: User profile data (name, department, program) is now fetched from API
+      // when needed, not stored in localStorage
 
       // Redirect based on role
       if (userRole === 'admin') {

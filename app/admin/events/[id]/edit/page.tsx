@@ -9,36 +9,94 @@ import { Textarea } from '@/components/ui/textarea'
 import { ArrowLeft } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { Event, getEventById } from '@/lib/event-context'
+import { adminApi, apiCall } from '@/lib/api-config'
 
 export default function EditEventPage() {
   const router = useRouter()
   const params = useParams()
   const [event, setEvent] = useState<Event | null>(null)
+  const [loading, setLoading] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
   const [formData, setFormData] = useState({
-    name: '',
+    title: '',
     description: '',
     date: '',
-    startTime: '',
-    endTime: '',
-    venue: '',
+    start_time: '',
+    end_time: '',
+    location: '',
     speakers: '',
   })
 
   useEffect(() => {
-    const foundEvent = getEventById(params.id as string)
-    if (foundEvent) {
-      setEvent(foundEvent)
-      setFormData({
-        name: foundEvent.name,
-        description: foundEvent.description,
-        date: foundEvent.date,
-        startTime: foundEvent.startTime,
-        endTime: foundEvent.endTime,
-        venue: foundEvent.venue,
-        speakers: foundEvent.speakers,
-      })
+    const fetchEvent = async () => {
+      const eventId = params.id as string
+      console.log('[Edit Event] Looking for event with ID:', eventId)
+      
+      // First try to fetch from API
+      try {
+        const eventUrl = adminApi.eventById(eventId)
+        console.log('[Edit Event] Fetching from API:', eventUrl)
+        
+        const response = await apiCall.get(eventUrl)
+        console.log('[Edit Event] API response status:', response.status, response.statusText)
+        
+        if (response.ok) {
+          const apiEvent = await response.json()
+          console.log('[Edit Event] ✅ Event found in API!')
+          console.log('[Edit Event] Event title:', apiEvent.title)
+          
+          setEvent(apiEvent as Event)
+          
+          // Map API fields to form data (handle both camelCase and snake_case)
+          setFormData({
+            title: apiEvent.title || apiEvent.name || '',
+            description: apiEvent.description || '',
+            date: apiEvent.date || '',
+            start_time: apiEvent.start_time || apiEvent.startTime || '',
+            end_time: apiEvent.end_time || apiEvent.endTime || '',
+            location: apiEvent.location || apiEvent.venue || '',
+            speakers: Array.isArray(apiEvent.speakers) 
+              ? apiEvent.speakers.join(', ') 
+              : (apiEvent.speakers || ''),
+          })
+          
+          setLoading(false)
+          return
+        } else {
+          console.warn('[Edit Event] ❌ API request failed, status:', response.status)
+          try {
+            const errorData = await response.json()
+            console.warn('[Edit Event] Error response (JSON):', errorData)
+          } catch {
+            const errorText = await response.text()
+            console.warn('[Edit Event] Error response (text):', errorText)
+          }
+        }
+      } catch (apiErr) {
+        console.error('[Edit Event] ❌ API fetch error:', apiErr)
+      }
+      
+      // Fallback to localStorage
+      console.log('[Edit Event] Falling back to localStorage search')
+      const foundEvent = getEventById(eventId)
+      if (foundEvent) {
+        setEvent(foundEvent)
+        setFormData({
+          title: foundEvent.title || foundEvent.name || '',
+          description: foundEvent.description || '',
+          date: foundEvent.date || '',
+          start_time: foundEvent.start_time || foundEvent.startTime || '',
+          end_time: foundEvent.end_time || foundEvent.endTime || '',
+          location: foundEvent.location || foundEvent.venue || '',
+          speakers: foundEvent.speakers || '',
+        })
+      }
+      
+      setLoading(false)
     }
+    
+    fetchEvent()
   }, [params.id])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -48,37 +106,75 @@ export default function EditEventPage() {
 
   const handleSave = async () => {
     setIsLoading(true)
-
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    // Update event in localStorage (both new and legacy keys)
+    setError('')
+    
     try {
-      const existingNew = JSON.parse(localStorage.getItem('crosscert_local_events') || '[]')
-      const updatedNew = existingNew.map((e: Event) =>
-        String(e.id) === String(params.id) ? { ...e, ...formData } : e
-      )
-      localStorage.setItem('crosscert_local_events', JSON.stringify(updatedNew))
-    } catch (err) {
-      console.warn('Failed to update crosscert_local_events', err)
-    }
-    try {
-      const existingOld = JSON.parse(localStorage.getItem('events') || '[]')
-      const updatedOld = existingOld.map((e: Event) =>
-        String(e.id) === String(params.id) ? { ...e, ...formData } : e
-      )
-      localStorage.setItem('events', JSON.stringify(updatedOld))
-    } catch (err) {
-      console.warn('Failed to update legacy events key', err)
-    }
+      const eventId = params.id as string
+      const eventUrl = adminApi.eventById(eventId)
+      console.log('[Edit Event] Updating event at:', eventUrl)
+      
+      // Prepare payload for API (convert speakers string to array if needed)
+      const payload = {
+        ...formData,
+        speakers: formData.speakers 
+          ? formData.speakers.split(',').map(s => s.trim()).filter(Boolean)
+          : [],
+      }
+      
+      console.log('[Edit Event] Payload:', payload)
+      
+      const response = await apiCall.patch(eventUrl, payload)
+      console.log('[Edit Event] Update response status:', response.status, response.statusText)
+      
+      if (!response.ok) {
+        let errorMessage = `Failed to update event: ${response.status} ${response.statusText}`
+        try {
+          const errorData = await response.json()
+          console.error('[Edit Event] Error response:', errorData)
+          errorMessage = errorData.error || errorData.detail || errorMessage
+          // Handle validation errors
+          if (errorData.title || errorData.date || errorData.start_time) {
+            const validationErrors = Object.entries(errorData)
+              .filter(([key]) => key !== 'error' && key !== 'detail')
+              .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
+              .join('; ')
+            if (validationErrors) {
+              errorMessage = `Validation errors: ${validationErrors}`
+            }
+          }
+        } catch {
+          // If JSON parsing fails, use status text
+        }
+        throw new Error(errorMessage)
+      }
 
-    setIsLoading(false)
-    router.push(`/admin/events/${params.id}`)
+      const updatedEvent = await response.json()
+      console.log('[Edit Event] ✅ Successfully updated event:', updatedEvent)
+      
+      setIsLoading(false)
+      router.push(`/admin/events/${params.id}`)
+    } catch (err: any) {
+      console.error('[Edit Event] Error updating event:', err)
+      setError(err.message || 'Failed to update event')
+      setIsLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-muted-foreground">Loading event...</p>
+      </div>
+    )
   }
 
   if (!event) {
+    console.error('[Edit Event] Event not found!')
+    console.error('[Edit Event] Searched ID:', params.id)
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">Event not found</p>
+        <p className="text-sm text-muted-foreground mt-2">ID: {params.id}</p>
         <Button onClick={() => router.back()} className="mt-4">Back</Button>
       </div>
     )
@@ -100,13 +196,20 @@ export default function EditEventPage() {
         <p className="text-muted-foreground mt-1">Update event details</p>
       </div>
 
+      {/* Error Message */}
+      {error && (
+        <div className="p-4 rounded-md border border-destructive bg-destructive/10 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
       {/* Edit Form */}
       <Card className="p-6 border border-border bg-card space-y-6">
         <div className="space-y-2">
           <Label className="text-foreground">Event Name</Label>
           <Input
-            name="name"
-            value={formData.name}
+            name="title"
+            value={formData.title}
             onChange={handleChange}
             className="bg-background border-border text-foreground"
           />
@@ -137,8 +240,8 @@ export default function EditEventPage() {
             <Label className="text-foreground">Start Time</Label>
             <Input
               type="time"
-              name="startTime"
-              value={formData.startTime}
+              name="start_time"
+              value={formData.start_time}
               onChange={handleChange}
               className="bg-background border-border text-foreground"
             />
@@ -149,8 +252,8 @@ export default function EditEventPage() {
           <Label className="text-foreground">End Time</Label>
           <Input
             type="time"
-            name="endTime"
-            value={formData.endTime}
+            name="end_time"
+            value={formData.end_time}
             onChange={handleChange}
             className="bg-background border-border text-foreground"
           />
@@ -159,8 +262,8 @@ export default function EditEventPage() {
         <div className="space-y-2">
           <Label className="text-foreground">Venue</Label>
           <Input
-            name="venue"
-            value={formData.venue}
+            name="location"
+            value={formData.location}
             onChange={handleChange}
             className="bg-background border-border text-foreground"
           />

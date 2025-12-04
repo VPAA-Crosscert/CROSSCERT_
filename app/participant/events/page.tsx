@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft, MapPin, Calendar, Bookmark, X } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { Input } from '@/components/ui/input'
-import { getStoredEvents, getDepartmentFromUser } from '@/lib/event-context'
+import { getStoredEvents, fetchUserDepartment } from '@/lib/event-context'
 import { Event } from '@/lib/event-context'
+import { api, apiCall } from '@/lib/api-config'
 
 const DEPARTMENT_ABBR = {
   'College of Criminal Justice Education': 'CCJE',
@@ -17,6 +18,17 @@ const DEPARTMENT_ABBR = {
   'College of Maritime Education': 'COME',
   'School of Business & Management': 'SBME',
   'School of Teacher Education': 'STE',
+}
+
+// Add a reverse mapping function
+const getDepartmentAbbr = (fullName: string): string | null => {
+  if (!fullName) return null
+  // Check if it's already an abbreviation
+  if (Object.values(DEPARTMENT_ABBR).includes(fullName as any)) {
+    return fullName
+  }
+  // Map full name to abbreviation
+  return DEPARTMENT_ABBR[fullName as keyof typeof DEPARTMENT_ABBR] || null
 }
 
 export default function ParticipantEvents() {
@@ -30,16 +42,80 @@ export default function ParticipantEvents() {
   const [deniedDepartment, setDeniedDepartment] = useState('')
 
   useEffect(() => {
-    const dept = getDepartmentFromUser()
-    setUserDepartment(dept)
-    const storedEvents = getStoredEvents()
-    setEvents(storedEvents)
-    
-    // Load bookmarked events from localStorage
-    const storedBookmarks = localStorage.getItem('bookmarkedEvents')
-    if (storedBookmarks) {
-      setBookmarked(new Set(JSON.parse(storedBookmarks)))
+    const fetchEvents = async () => {
+      try {
+        // Fetch user department from API
+        const dept = await fetchUserDepartment()
+        setUserDepartment(dept)
+        
+        // Fetch from API first (prioritize backend data)
+        const eventsUrl = api.events().endsWith('/') ? api.events() : `${api.events()}/`
+        console.log('[Participant Events] Fetching events from:', eventsUrl)
+        const res = await apiCall.get(eventsUrl)
+        
+        console.log('[Participant Events] Response status:', res.status, res.statusText)
+        
+        let eventsList: Event[] = []
+        
+        if (!res.ok) {
+          console.warn('[Participant Events] Unable to load events from API. Status:', res.status, res.statusText)
+          // Fallback to localStorage if API fails
+          const storedEvents = getStoredEvents()
+          eventsList = storedEvents
+          console.log('[Participant Events] Using localStorage fallback, events count:', eventsList.length)
+        } else {
+          let data: unknown = []
+          try {
+            data = await res.json()
+            console.log('[Participant Events] Raw API response:', data)
+          } catch {
+            console.error('[Participant Events] Events API did not return JSON.')
+            const storedEvents = getStoredEvents()
+            eventsList = storedEvents
+          }
+          
+          // Handle paginated response from Django REST Framework
+          if (Array.isArray(data)) {
+            eventsList = data as Event[]
+            console.log('[Participant Events] Direct array response, events count:', eventsList.length)
+          } else if (data && typeof data === 'object' && 'results' in data && Array.isArray(data.results)) {
+            eventsList = data.results as Event[]
+            console.log('[Participant Events] Paginated response (results), events count:', eventsList.length)
+          } else if (data && typeof data === 'object' && 'data' in data && Array.isArray(data.data)) {
+            eventsList = data.data as Event[]
+            console.log('[Participant Events] Paginated response (data), events count:', eventsList.length)
+          } else {
+            console.warn('[Participant Events] Unknown response format, falling back to localStorage')
+            const storedEvents = getStoredEvents()
+            eventsList = storedEvents
+          }
+        }
+        
+        // Filter for public events
+        const publicEvents = eventsList.filter(event => event.isPublic !== false)
+        console.log('[Participant Events] Public events count:', publicEvents.length)
+        setEvents(publicEvents)
+        
+        // Load bookmarked events from localStorage
+        const storedBookmarks = localStorage.getItem('bookmarkedEvents')
+        if (storedBookmarks) {
+          setBookmarked(new Set(JSON.parse(storedBookmarks)))
+        }
+      } catch (err) {
+        console.error('[Participant Events] Error fetching events:', err)
+        // Fallback to localStorage on error
+        const storedEvents = getStoredEvents()
+        setEvents(storedEvents)
+        
+        // Load bookmarked events from localStorage
+        const storedBookmarks = localStorage.getItem('bookmarkedEvents')
+        if (storedBookmarks) {
+          setBookmarked(new Set(JSON.parse(storedBookmarks)))
+        }
+      }
     }
+    
+    fetchEvents()
   }, [])
 
   const filteredEvents = events.filter((event) => {
@@ -59,12 +135,34 @@ export default function ParticipantEvents() {
   })
 
   const canAccessEvent = (eventCategory: string, eventDept?: string): boolean => {
+    // HCDC events are accessible to everyone
     if (eventCategory === 'HCDC') return true
-    const userDept = Object.values(DEPARTMENT_ABBR).find(
-      abbr => abbr === eventDept || 
-      getDepartmentFromUser().includes(abbr)
-    )
-    return eventDept === userDept || eventCategory === userDept
+    
+    // If no department restriction, allow access
+    if (!eventDept) return true
+    
+    // Use the userDepartment state which is fetched from API
+    const userDeptFull = userDepartment
+    if (!userDeptFull) {
+      console.log('[Access Check] User department not set')
+      return false // User has no department set, can't access department events
+    }
+    
+    // Convert both to abbreviations for comparison
+    const userDeptAbbr = getDepartmentAbbr(userDeptFull)
+    const eventDeptAbbr = getDepartmentAbbr(eventDept)
+    
+    console.log('[Access Check]', {
+      eventCategory,
+      eventDept,
+      eventDeptAbbr,
+      userDeptFull,
+      userDeptAbbr,
+      match: userDeptAbbr === eventDeptAbbr
+    })
+    
+    // Match if abbreviations match
+    return userDeptAbbr !== null && eventDeptAbbr !== null && userDeptAbbr === eventDeptAbbr
   }
 
   const handleRegister = (event: Event) => {

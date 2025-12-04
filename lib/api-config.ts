@@ -67,11 +67,32 @@ export const adminApi = {
  */
 export const api = {
   events: () => getApiUrl(API_ROUTES.events),
-  registrations: () => getApiUrl(API_ROUTES.registrations),
-  checkIns: () => getApiUrl(API_ROUTES.checkIns),
-  evaluations: () => getApiUrl(API_ROUTES.evaluations),
-  certificates: () => getApiUrl(API_ROUTES.certificates),
-  participants: () => getApiUrl('/api/participants'),
+  registrations: () => {
+    const url = getApiUrl(API_ROUTES.registrations)
+    return url.endsWith('/') ? url : `${url}/`
+  },
+  checkIns: () => {
+    const url = getApiUrl(API_ROUTES.checkIns)
+    return url.endsWith('/') ? url : `${url}/`
+  },
+  evaluations: () => {
+    const url = getApiUrl(API_ROUTES.evaluations)
+    return url.endsWith('/') ? url : `${url}/`
+  },
+  certificates: () => {
+    const url = getApiUrl(API_ROUTES.certificates)
+    return url.endsWith('/') ? url : `${url}/`
+  },
+  participants: () => {
+    const url = getApiUrl('/api/participants')
+    return url.endsWith('/') ? url : `${url}/`
+  },
+  
+  // Helper for participant registration
+  participantRegister: () => {
+    const baseUrl = api.participants()
+    return baseUrl.endsWith('/') ? `${baseUrl}register/` : `${baseUrl}/register/`
+  },
   
   // Helper to get a specific resource by ID
   eventById: (id: string | number) => `${getApiUrl(API_ROUTES.events)}/${id}/`,
@@ -151,5 +172,24 @@ export const apiCall = {
   put: (url: string, data?: any) => apiRequest(url, { method: 'PUT', body: JSON.stringify(data) }),
   patch: (url: string, data?: any) => apiRequest(url, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (url: string) => apiRequest(url, { method: 'DELETE' }),
+}
+
+/**
+ * Get authenticated user's email from API session
+ * This is more secure than using localStorage
+ */
+export async function getAuthenticatedUserEmail(): Promise<string | null> {
+  try {
+    const response = await apiRequest(authApi.me(), { method: 'GET' })
+    if (response.ok) {
+      const data = await response.json()
+      if (data.authenticated && data.user && data.user.email) {
+        return data.user.email
+      }
+    }
+  } catch (err) {
+    console.error('[API] Error fetching authenticated user email:', err)
+  }
+  return null
 }
 

@@ -34,10 +34,18 @@ export default function ParticipantEvents() {
     setUserDepartment(dept)
     const storedEvents = getStoredEvents()
     setEvents(storedEvents)
+    
+    // Load bookmarked events from localStorage
+    const storedBookmarks = localStorage.getItem('bookmarkedEvents')
+    if (storedBookmarks) {
+      setBookmarked(new Set(JSON.parse(storedBookmarks)))
+    }
   }, [])
 
   const filteredEvents = events.filter((event) => {
-    const matchesSearch = event.name.toLowerCase().includes(searchTerm.toLowerCase())
+    // Safety check: handle both 'name' (frontend) and 'title' (backend) properties
+    const eventName = (event.name || event.title || '').toString()
+    const matchesSearch = eventName.toLowerCase().includes(searchTerm.toLowerCase())
     
     if (selectedCategory === 'ALL') {
       return matchesSearch
@@ -76,6 +84,8 @@ export default function ParticipantEvents() {
       newBookmarked.add(id)
     }
     setBookmarked(newBookmarked)
+    // Persist to localStorage
+    localStorage.setItem('bookmarkedEvents', JSON.stringify(Array.from(newBookmarked)))
   }
 
   const categories = ['ALL', 'HCDC', 'CET', 'STE', 'SBME', 'HUSOCOM', 'CHATME', 'COME', 'CCJE']
@@ -128,19 +138,28 @@ export default function ParticipantEvents() {
               key={event.id}
               className="overflow-hidden border border-border bg-card hover:shadow-lg transition-shadow"
             >
-              <div className="aspect-video bg-gradient-to-br from-secondary/20 to-primary/20" />
+              {(event.coverImage || event.cover_image) ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img 
+                  src={event.coverImage || event.cover_image || ''} 
+                  alt={event.name || event.title || 'Event cover'} 
+                  className="w-full aspect-video object-cover"
+                />
+              ) : (
+                <div className="aspect-video bg-gradient-to-br from-secondary/20 to-primary/20" />
+              )}
 
               <div className="p-4 space-y-3">
-                <h3 className="font-semibold text-foreground line-clamp-2">{event.name}</h3>
+                <h3 className="font-semibold text-foreground line-clamp-2">{event.name || event.title || 'Untitled Event'}</h3>
 
                 <div className="space-y-2 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4" />
-                    {event.date} • {event.startTime}
+                    {event.date} • {event.startTime || event.start_time || 'TBA'}
                   </div>
                   <div className="flex items-center gap-2">
                     <MapPin className="w-4 h-4" />
-                    {event.venue}
+                    {event.venue || event.location || 'TBA'}
                   </div>
                 </div>
 

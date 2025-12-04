@@ -18,6 +18,7 @@ api_router.register(r'check-ins', CheckInViewSet, basename='check-in')
 api_router.register(r'evaluations', EvaluationViewSet, basename='evaluation')
 api_router.register(r'certificates', CertificateViewSet, basename='certificate')
 api_router.register(r'qr-code', QRCodeViewSet, basename='qr-code')
+api_router.register(r'participants', ParticipantViewSet, basename='participant')
 
 # Admin API router for admin-specific endpoints
 admin_router = DefaultRouter()
@@ -46,6 +47,9 @@ urlpatterns = [
     
     # Django admin (after api so it doesn't interfere)
     path('admin/', admin.site.urls),
+    
+    # Markdownx URLs for markdown editor
+    path('markdownx/', include('markdownx.urls')),
 
     # Redirect root
     path('', RedirectView.as_view(url='/admin/', permanent=False)),

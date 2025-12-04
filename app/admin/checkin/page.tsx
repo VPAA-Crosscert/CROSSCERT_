@@ -1,23 +1,26 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { ArrowLeft, QrCode, BarChart3, Camera } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { api, apiCall } from '@/lib/api-config'
+import jsQR from 'jsqr'
 
 type EventRecord = {
   id: number
-  title: string
+  title?: string
+  name?: string
 }
 
 export default function AdminCheckIn() {
   const router = useRouter()
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
   
   const [events, setEvents] = useState<EventRecord[]>([])
   const [selectedEvent, setSelectedEvent] = useState<string>('')
@@ -26,51 +29,288 @@ export default function AdminCheckIn() {
   const [participantName, setParticipantName] = useState('')
   const [checkedInCount, setCheckedInCount] = useState(0)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [eventsLoading, setEventsLoading] = useState(true)
+  const [eventsError, setEventsError] = useState('')
+  const [isProcessingScan, setIsProcessingScan] = useState(false)
+  const scanIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     const fetchEvents = async () => {
+      setEventsLoading(true)
+      setEventsError('')
       try {
+        // Prefer localStorage events to avoid backend calls during local development
+        // This matches the behavior of the Events page
+        const existing = localStorage.getItem('crosscert_local_events')
+        if (existing) {
+          try {
+            const list = JSON.parse(existing) as EventRecord[]
+            const validEvents = (Array.isArray(list) ? list : [])
+              .filter((evt) => evt && evt.id)
+              .map((evt) => ({
+                id: evt.id,
+                title: evt.title || evt.name || `Event #${evt.id}`,
+              }))
+            setEvents(validEvents)
+            setEventsLoading(false)
+            return
+          } catch (parseErr) {
+            // Continue to API fetch if localStorage parse fails
+          }
+        }
+
+        // Fallback: attempt to fetch from API if no local events found
         const res = await apiCall.get(api.events())
-        if (!res.ok) throw new Error('Unable to load events')
+        if (!res.ok) {
+          if (res.status === 403) {
+            setEventsError('Access denied. Please ensure you are logged in as an admin.')
+          } else {
+            setEventsError('Unable to load events. Please try again.')
+          }
+          setEvents([])
+          return
+        }
         const data = await res.json()
-        setEvents(data)
-      } catch (err) {
-        console.error(err)
+        
+        // Ensure events is an array (handle paginated responses or other formats)
+        const events: EventRecord[] = Array.isArray(data) 
+          ? data 
+          : (data.results || data.data || [])
+
+        // Validate each event - handle both 'title' and 'name' properties
+        const validEvents = events
+          .filter((evt) => evt && evt.id)
+          .map((evt) => ({
+            id: evt.id,
+            title: evt.title || evt.name || `Event #${evt.id}`,
+          }))
+        
+        setEvents(validEvents)
+        if (validEvents.length === 0 && events.length > 0) {
+          setEventsError('Events loaded but none are valid.')
+        }
+      } catch (err: any) {
+        setEventsError(err.message || 'Unable to load events. Please check your connection.')
+        setEvents([])
+      } finally {
+        setEventsLoading(false)
       }
     }
     fetchEvents()
   }, [])
 
-  const startCamera = async () => {
+  const handleAutoScan = useCallback(async (code: string) => {
+    if (!selectedEvent) {
+      alert('Please select an event first')
+      setTimeout(() => setIsProcessingScan(false), 1000)
+      return
+    }
+
+    if (!code.trim()) {
+      setTimeout(() => setIsProcessingScan(false), 500)
+      return
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
+      const res = await apiCall.post(`${api.checkIns()}/check-in-by-code/`, {
+        code: code.trim(),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error || data.message || 'Unable to check in participant.')
+        setTimeout(() => setIsProcessingScan(false), 2000)
+        return
+      }
+
+      setParticipantName(`${data.participant_name ?? 'Participant'}`)
+      setCheckedInCount(prev => prev + 1)
+      setShowSuccess(true)
+
+      // Reset after showing success
+      setTimeout(() => {
+        setScannedCode('')
+        setShowSuccess(false)
+        setIsProcessingScan(false)
+      }, 2000)
+    } catch (err) {
+      alert('Network error while checking in participant.')
+      setTimeout(() => setIsProcessingScan(false), 2000)
+    }
+  }, [selectedEvent])
+
+  // Apply stream to video element after it's rendered and start QR scanning
+  useEffect(() => {
+    if (cameraActive && streamRef.current && videoRef.current) {
+      const video = videoRef.current
+      const stream = streamRef.current
+      
+      video.srcObject = stream
+
+      // Ensure video plays
+      video.onloadedmetadata = () => {
+        if (video) {
+          video.play().catch(() => {
+            // Silently handle play errors
+          })
+        }
+      }
+
+      // Start automatic QR code scanning
+      if (canvasRef.current && video) {
+        const canvas = canvasRef.current
+        const context = canvas.getContext('2d', { willReadFrequently: true })
+        
+        if (context) {
+          // Set canvas size to match video
+          const updateCanvasSize = () => {
+            if (video.videoWidth && video.videoHeight) {
+              canvas.width = video.videoWidth
+              canvas.height = video.videoHeight
+            }
+          }
+
+          // Update canvas size when video metadata loads
+          video.addEventListener('loadedmetadata', updateCanvasSize)
+          video.addEventListener('resize', updateCanvasSize)
+          updateCanvasSize()
+
+          // Wait a bit for video to be ready before starting scan
+          const startScanning = setTimeout(() => {
+            // Scan for QR codes every 200ms
+            scanIntervalRef.current = setInterval(() => {
+              const isReady = video.readyState === video.HAVE_ENOUGH_DATA
+              const hasValidSize = canvas.width > 0 && canvas.height > 0
+              const notProcessing = !isProcessingScan
+
+              if (isReady && notProcessing && hasValidSize) {
+                try {
+                  // Draw video frame to canvas
+                  context.drawImage(video, 0, 0, canvas.width, canvas.height)
+                  
+                  // Get image data
+                  const imageData = context.getImageData(0, 0, canvas.width, canvas.height)
+                  
+                  // Use jsQR to decode QR code
+                  try {
+                    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                      inversionAttempts: 'dontInvert'
+                    })
+                    
+                    if (code && code.data) {
+                      // QR code detected - automatically process it
+                      setIsProcessingScan(true)
+                      setScannedCode(code.data)
+                      // Automatically trigger check-in
+                      handleAutoScan(code.data)
+                    }
+                  } catch (qrErr) {
+                    // QR decoding failed (no QR code found is normal)
+                  }
+                } catch (err) {
+                  // Silently handle scanning errors
+                }
+              }
+            }, 200)
+          }, 500) // Wait 500ms for video to initialize
+
+          return () => {
+            clearTimeout(startScanning)
+          }
+        }
+      }
+    }
+
+    // Cleanup: stop scanning when camera is deactivated
+    return () => {
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current)
+        scanIntervalRef.current = null
+      }
+    }
+  }, [cameraActive, isProcessingScan, handleAutoScan])
+
+  const startCamera = async () => {
+    // Check if browser supports camera access
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Your browser does not support camera access. Please use a modern browser like Chrome, Firefox, or Edge.')
+      return
+    }
+
+    // Check if we're on HTTPS or localhost (required for camera access)
+    const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    if (!isSecure) {
+      alert('Camera access requires HTTPS. Please access this page over HTTPS or use localhost.')
+      return
+    }
+
+    try {
+      // Try to get back camera first (for QR scanning)
+      let stream: MediaStream | null = null
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'environment', // Back camera
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          } 
+        })
+      } catch (backCameraError) {
+        // If back camera fails, try any available camera
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          } 
+        })
+      }
+
+      if (stream) {
+        // Store stream in ref so we can apply it after video element renders
+        streamRef.current = stream
+
+        // Set cameraActive to true first - this will render the video element
+        // Then useEffect will apply the stream to the video element
         setCameraActive(true)
       }
-    } catch (err) {
-      alert('Unable to access camera. Using manual entry instead.')
+    } catch (err: any) {
+      let errorMessage = 'Unable to access camera. '
+      
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        errorMessage += 'Please allow camera access in your browser settings and try again.'
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        errorMessage += 'No camera found on your device.'
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        errorMessage += 'Camera is already in use by another application.'
+      } else if (err.name === 'OverconstrainedError') {
+        errorMessage += 'Camera does not support the required settings.'
+      } else {
+        errorMessage += 'Please check your camera permissions and try again.'
+      }
+      
+      alert(errorMessage + '\n\nYou can still use manual code entry below.')
     }
   }
 
   const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks()
-      tracks.forEach(track => track.stop())
-      setCameraActive(false)
+    // Stop scanning interval
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current)
+      scanIntervalRef.current = null
     }
+    // Stop all tracks from the stream ref
+    if (streamRef.current) {
+      const tracks = streamRef.current.getTracks()
+      tracks.forEach(track => track.stop())
+      streamRef.current = null
+    }
+    // Clear video element
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+    setCameraActive(false)
+    setIsProcessingScan(false)
   }
 
-  const captureFrame = () => {
-    if (videoRef.current && canvasRef.current) {
-      const context = canvasRef.current.getContext('2d')
-      if (context) {
-        context.drawImage(videoRef.current, 0, 0)
-        const imageData = canvasRef.current.toDataURL('image/png')
-        console.log('[v0] QR code captured, would be processed here')
-      }
-    }
-  }
 
   const handleScan = async () => {
     if (!selectedEvent) {
@@ -84,10 +324,8 @@ export default function AdminCheckIn() {
     }
 
     try {
-      const res = await fetch(`${api.checkIns()}/check-in-by-code/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: scannedCode.trim() }),
+      const res = await apiCall.post(`${api.checkIns()}/check-in-by-code/`, {
+        code: scannedCode.trim(),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -130,13 +368,23 @@ export default function AdminCheckIn() {
           <Card className="p-6 border border-border bg-card space-y-4">
             <div>
               <Label className="text-foreground font-semibold">Select Event</Label>
+              {eventsError && (
+                <p className="text-sm text-destructive mt-1 mb-2">{eventsError}</p>
+              )}
               <select
                 value={selectedEvent}
                 onChange={(e) => setSelectedEvent(e.target.value)}
                 className="w-full mt-2 px-3 py-2 rounded-md border border-border bg-background text-foreground"
+                disabled={eventsLoading}
               >
-                <option value="">-- Choose an event --</option>
-                {events.map((event) => (
+                <option value="">
+                  {eventsLoading 
+                    ? 'Loading events...' 
+                    : events.length === 0 
+                    ? 'No events available' 
+                    : '-- Choose an event --'}
+                </option>
+                {Array.isArray(events) && events.map((event) => (
                   <option key={event.id} value={event.id.toString()}>
                     {event.title}
                   </option>
@@ -153,38 +401,69 @@ export default function AdminCheckIn() {
 
             {cameraActive ? (
               <div className="space-y-4">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  className="w-full rounded-lg border border-border"
-                  style={{ maxHeight: '300px' }}
-                />
+                <div className="relative w-full bg-black rounded-lg overflow-hidden border border-border" style={{ minHeight: '300px', maxHeight: '500px' }}>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-contain"
+                    style={{ 
+                      display: 'block',
+                      width: '100%',
+                      height: 'auto',
+                      maxHeight: '500px'
+                    }}
+                  />
+                  {/* Scanning overlay indicator */}
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                    <div className="border-2 border-green-500 rounded-lg" style={{ 
+                      width: '250px', 
+                      height: '250px',
+                      boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.5)'
+                    }}>
+                      <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-green-500"></div>
+                      <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-green-500"></div>
+                      <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-green-500"></div>
+                      <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-green-500"></div>
+                    </div>
+                  </div>
+                </div>
                 <canvas ref={canvasRef} className="hidden" />
                 <div className="flex gap-2">
                   <Button
-                    className="flex-1 gap-2"
-                    onClick={captureFrame}
-                  >
-                    Capture
-                  </Button>
-                  <Button
                     variant="outline"
-                    className="flex-1"
+                    className="w-full"
                     onClick={stopCamera}
                   >
                     Stop Camera
                   </Button>
                 </div>
+                <p className="text-sm text-muted-foreground text-center">
+                  Position the QR code within the frame. Scanning automatically...
+                </p>
+                {isProcessingScan && (
+                  <p className="text-sm text-blue-500 text-center animate-pulse">
+                    Processing QR code...
+                  </p>
+                )}
               </div>
             ) : (
-              <Button
-                className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground gap-2"
-                onClick={startCamera}
-              >
-                <Camera className="w-4 h-4" />
-                Start Camera
-              </Button>
+              <div className="space-y-4">
+                <div className="w-full bg-muted rounded-lg border border-border flex items-center justify-center" style={{ minHeight: '300px' }}>
+                  <div className="text-center space-y-2">
+                    <Camera className="w-12 h-12 text-muted-foreground mx-auto" />
+                    <p className="text-muted-foreground">Camera not active</p>
+                  </div>
+                </div>
+                <Button
+                  className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground gap-2"
+                  onClick={startCamera}
+                >
+                  <Camera className="w-4 h-4" />
+                  Start Camera
+                </Button>
+              </div>
             )}
 
             <div className="relative">

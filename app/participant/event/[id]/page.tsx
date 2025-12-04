@@ -22,6 +22,13 @@ export default function ParticipantEventDetail() {
     const foundEvent = getEventById(params.id as string)
     setEvent(foundEvent)
     
+    // Load bookmark status from localStorage
+    const storedBookmarks = localStorage.getItem('bookmarkedEvents')
+    if (storedBookmarks) {
+      const bookmarks = new Set(JSON.parse(storedBookmarks))
+      setIsBookmarked(bookmarks.has(params.id))
+    }
+    
     const status = getRegistrationStatus(params.id as string)
     setRegistrationStatus(status)
     
@@ -91,15 +98,24 @@ export default function ParticipantEventDetail() {
       </button>
 
       {/* Hero Section */}
-      <div className="aspect-video bg-gradient-to-br from-secondary/20 to-primary/20 rounded-lg border border-border" />
+      {(event.coverImage || event.cover_image) ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img 
+          src={event.coverImage || event.cover_image || ''} 
+          alt={event.name || event.title || 'Event cover'} 
+          className="w-full aspect-video object-cover rounded-lg border border-border"
+        />
+      ) : (
+        <div className="aspect-video bg-gradient-to-br from-secondary/20 to-primary/20 rounded-lg border border-border" />
+      )}
 
       {/* Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           {/* Title */}
           <div>
-            <h1 className="text-4xl font-bold text-foreground mb-2">{event.name}</h1>
-            <p className="text-muted-foreground">{event.department}</p>
+            <h1 className="text-4xl font-bold text-foreground mb-2">{event.name || event.title || 'Untitled Event'}</h1>
+            <p className="text-muted-foreground">{event.department || 'N/A'}</p>
           </div>
 
           {/* Info Grid */}
@@ -109,8 +125,10 @@ export default function ParticipantEventDetail() {
                 <Calendar className="w-4 h-4" />
                 <span className="text-sm">Date & Time</span>
               </div>
-              <p className="font-semibold text-foreground">{event.date}</p>
-              <p className="text-sm text-muted-foreground">{event.startTime} - {event.endTime}</p>
+              <p className="font-semibold text-foreground">{event.date || 'TBA'}</p>
+              <p className="text-sm text-muted-foreground">
+                {event.startTime || event.start_time || 'TBA'} - {event.endTime || event.end_time || 'TBA'}
+              </p>
             </Card>
 
             <Card className="p-4 border border-border bg-card">
@@ -118,7 +136,7 @@ export default function ParticipantEventDetail() {
                 <MapPin className="w-4 h-4" />
                 <span className="text-sm">Location</span>
               </div>
-              <p className="font-semibold text-foreground text-sm">{event.venue}</p>
+              <p className="font-semibold text-foreground text-sm">{event.venue || event.location || 'TBA'}</p>
             </Card>
 
             <Card className="p-4 border border-border bg-card">
@@ -155,7 +173,22 @@ export default function ParticipantEventDetail() {
             <Button
               variant="outline"
               className="w-full justify-start gap-2"
-              onClick={() => setIsBookmarked(!isBookmarked)}
+              onClick={() => {
+                const newBookmarked = !isBookmarked
+                setIsBookmarked(newBookmarked)
+                
+                // Update localStorage
+                const storedBookmarks = localStorage.getItem('bookmarkedEvents')
+                const bookmarks = storedBookmarks ? new Set(JSON.parse(storedBookmarks)) : new Set<number | string>()
+                
+                if (newBookmarked) {
+                  bookmarks.add(params.id as string)
+                } else {
+                  bookmarks.delete(params.id as string)
+                }
+                
+                localStorage.setItem('bookmarkedEvents', JSON.stringify(Array.from(bookmarks)))
+              }}
             >
               <Bookmark className={`w-5 h-5 ${isBookmarked ? 'fill-primary text-primary' : ''}`} />
               {isBookmarked ? 'Bookmarked' : 'Bookmark Event'}
@@ -172,7 +205,7 @@ export default function ParticipantEventDetail() {
       <SuccessModal
         isOpen={showSuccessModal}
         title="Successfully Registered!"
-        message={`You have successfully registered for ${event.name}.`}
+        message={`You have successfully registered for ${event.name || event.title || 'this event'}.`}
         actionLabel="View QR Code"
         onClose={() => {
           setShowSuccessModal(false)

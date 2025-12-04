@@ -1,11 +1,15 @@
-Django==4.2.7
-djangorestframework==3.14.0
-django-cors-headers==4.3.1
-psycopg2-binary==2.9.11
-gunicorn==21.2.0
-python-dotenv==1.0.0
-qrcode==7.4.2
+# Latest versions with Django 6.0 (for Python 3.14)
+# WARNING: Test thoroughly as some packages may not be fully compatible yet
+Django>=6.0,<6.1
+djangorestframework>=3.15.0
+django-cors-headers>=4.4.0
+psycopg2-binary>=2.9.9
+gunicorn>=22.0.0
+python-dotenv>=1.0.0
+qrcode>=7.4.2
 Pillow>=10.1.0
-reportlab==4.0.7
-requests==2.31.0
-django-filter==23.5
+reportlab>=4.0.7
+requests>=2.31.0
+django-filter>=24.0
+django-markdownx>=4.0.2
+

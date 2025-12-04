@@ -10,18 +10,23 @@ import { api } from '@/lib/api-config'
 
 type AdminEvent = {
   id: number | string
-  title: string
-  date: string
-  start_time: string
-  end_time: string
-  location: string
+  title?: string
+  name?: string
+  date?: string
+  start_time?: string
+  startTime?: string
+  end_time?: string
+  endTime?: string
+  location?: string
+  venue?: string
   cover_image?: string
+  coverImage?: string
 }
 
 export default function AdminEvents() {
   const router = useRouter()
   const [searchTerm, setSearchTerm] = useState('')
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | string | null>(null)
   const [events, setEvents] = useState<AdminEvent[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -61,11 +66,12 @@ export default function AdminEvents() {
     fetchEvents()
   }, [])
 
-  const filteredEvents = events.filter((event) =>
-    event.title.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredEvents = events.filter((event) => {
+    const eventName = (event.title || event.name || '').toString()
+    return eventName.toLowerCase().includes(searchTerm.toLowerCase())
+  })
 
-  const handleDelete = (id: number) => {
+  const handleDelete = (id: number | string) => {
     const remaining = events.filter(e => e.id !== id)
     setEvents(remaining)
     try {
@@ -109,21 +115,31 @@ export default function AdminEvents() {
         )}
         {!loading && filteredEvents.map((event) => (
           <Card key={event.id} className="border border-border bg-card overflow-hidden">
-            {event.cover_image ? (
+            {(event.coverImage || event.cover_image) ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={event.cover_image} alt={event.title} className="w-full h-40 object-cover" />
+              <img 
+                src={event.coverImage || event.cover_image || ''} 
+                alt={event.title || event.name || 'Event cover'} 
+                className="w-full aspect-video object-cover" 
+              />
             ) : (
-              <div className="w-full h-40 bg-gradient-to-br from-secondary/20 to-primary/20" />
+              <div className="w-full aspect-video bg-gradient-to-br from-secondary/20 to-primary/20" />
             )}
             <div className="p-4 space-y-2">
-              <h3 className="text-lg font-semibold text-foreground line-clamp-1">{event.title}</h3>
+              <h3 className="text-lg font-semibold text-foreground line-clamp-1">{event.title || event.name || 'Untitled Event'}</h3>
               <div className="text-sm text-muted-foreground space-y-1">
-                <div className="flex items-center gap-2"><Calendar className="w-4 h-4" /> <span>{event.date}</span></div>
-                {event.start_time && event.end_time && (
-                  <div>⏰ {event.start_time} - {event.end_time}</div>
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4" /> 
+                  <span>{event.date || 'TBA'}</span>
+                  {(event.startTime || event.start_time) && (
+                    <span> • {event.startTime || event.start_time}</span>
+                  )}
+                </div>
+                {(event.startTime || event.start_time) && (event.endTime || event.end_time) && (
+                  <div>⏰ {event.startTime || event.start_time} - {event.endTime || event.end_time}</div>
                 )}
-                {event.location && (
-                  <div>📍 {event.location}</div>
+                {(event.venue || event.location) && (
+                  <div>📍 {event.venue || event.location}</div>
                 )}
               </div>
               <div className="flex justify-end gap-1 pt-2">

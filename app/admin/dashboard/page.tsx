@@ -120,21 +120,21 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {events.map((event) => (
               <div key={event.id} className="border border-border rounded-lg overflow-hidden bg-background hover:shadow-sm transition-shadow cursor-pointer" onClick={() => router.push(`/admin/events/${event.id}`)}>
-                {event.coverImage ? (
+                {(event.coverImage || event.cover_image) ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={event.coverImage} alt={event.name} className="w-full h-36 object-cover" />
+                  <img src={event.coverImage || event.cover_image || ''} alt={event.name || event.title || 'Event cover'} className="w-full h-36 object-cover" />
                 ) : (
                   <div className="w-full h-36 bg-gradient-to-br from-secondary/20 to-primary/20" />
                 )}
                 <div className="p-4 space-y-2">
-                  <h3 className="text-lg font-semibold text-foreground line-clamp-1">{event.name}</h3>
+                  <h3 className="text-lg font-semibold text-foreground line-clamp-1">{event.name || event.title || 'Untitled Event'}</h3>
                   <div className="text-sm text-muted-foreground space-y-1">
-                    <div className="flex items-center gap-2"><Calendar className="w-4 h-4" /> <span>{event.date}</span></div>
-                    {event.startTime && event.endTime && (
-                      <div>⏰ {event.startTime} - {event.endTime}</div>
+                    <div className="flex items-center gap-2"><Calendar className="w-4 h-4" /> <span>{event.date || 'TBA'}</span></div>
+                    {(event.startTime || event.start_time) && (event.endTime || event.end_time) && (
+                      <div>⏰ {event.startTime || event.start_time} - {event.endTime || event.end_time}</div>
                     )}
-                    {event.venue && (
-                      <div>📍 {event.venue}</div>
+                    {(event.venue || event.location) && (
+                      <div>📍 {event.venue || event.location}</div>
                     )}
                   </div>
                 </div>

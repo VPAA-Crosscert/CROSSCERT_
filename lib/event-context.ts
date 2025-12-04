@@ -1,14 +1,19 @@
 export interface Event {
   id: number | string
-  name: string
+  name?: string  // Frontend property
+  title?: string // Backend property (maps to name)
   description: string
   date: string
-  startTime: string
-  endTime: string
+  startTime?: string
+  start_time?: string // Backend property
+  endTime?: string
+  end_time?: string // Backend property
   timezone: string
   speakers: string
-  venue: string
+  venue?: string
+  location?: string // Backend property (maps to venue)
   coverImage?: string
+  cover_image?: string // Backend property
   capacity?: number | string
   requireApproval?: boolean
   isPaidEvent?: boolean

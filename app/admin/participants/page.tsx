@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ArrowLeft, Search, Users, CheckCircle, AlertCircle } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { api } from '@/lib/api-config'
+import { api, apiCall } from '@/lib/api-config'
 
 type EventRecord = {
   id: number
@@ -34,26 +34,47 @@ export default function AdminParticipants() {
     const fetchData = async () => {
       try {
         const [eventsRes, regsRes] = await Promise.all([
-          fetch(api.events()),
-          fetch(api.registrations()),
+          apiCall.get(api.events()),
+          apiCall.get(api.registrations()),
         ])
 
         if (!eventsRes.ok || !regsRes.ok) {
+          if (eventsRes.status === 403 || regsRes.status === 403) {
+            throw new Error('Access denied. Please ensure you are logged in as an admin.')
+          }
           throw new Error('Unable to load participants data.')
         }
 
-        const events: EventRecord[] = await eventsRes.json()
-        const registrations: RegistrationRecord[] = await regsRes.json()
+        const eventsData = await eventsRes.json()
+        const registrationsData = await regsRes.json()
+
+        // Ensure events is an array (handle paginated responses or other formats)
+        const events: EventRecord[] = Array.isArray(eventsData) 
+          ? eventsData 
+          : (eventsData.results || eventsData.data || [])
+
+        // Ensure registrations is an array
+        const registrations: RegistrationRecord[] = Array.isArray(registrationsData)
+          ? registrationsData
+          : (registrationsData.results || registrationsData.data || [])
 
         const eventMap = new Map<number, string>()
-        events.forEach((evt) => eventMap.set(evt.id, evt.title))
+        if (Array.isArray(events)) {
+          events.forEach((evt) => {
+            if (evt && evt.id && evt.title) {
+              eventMap.set(evt.id, evt.title)
+            }
+          })
+        }
 
-        const flat = registrations.map((reg) => ({
-          id: reg.id,
-          name: `${reg.first_name} ${reg.last_name}`.trim(),
-          email: reg.email,
-          eventName: eventMap.get(reg.event) || `Event #${reg.event}`,
-        }))
+        const flat = Array.isArray(registrations) 
+          ? registrations.map((reg) => ({
+              id: reg.id,
+              name: `${reg.first_name || ''} ${reg.last_name || ''}`.trim() || 'Unknown',
+              email: reg.email || 'No email',
+              eventName: eventMap.get(reg.event) || `Event #${reg.event}`,
+            }))
+          : []
 
         setParticipants(flat)
       } catch (err: any) {

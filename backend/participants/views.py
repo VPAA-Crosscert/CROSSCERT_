@@ -5,6 +5,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import AllowAny
 from django.contrib.auth import get_user_model
 from .models import Evaluation
 from .serializers import EvaluationSerializer
@@ -22,7 +23,7 @@ class ParticipantViewSet(viewsets.ViewSet):
         """List all participants."""
         return Response([])
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def register(self, request):
         """
         Register a participant as a Django user.

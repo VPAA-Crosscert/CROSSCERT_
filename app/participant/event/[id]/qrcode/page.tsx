@@ -164,43 +164,18 @@ export default function ParticipantQRCode() {
         </div>
       )}
 
-      {/* QR Code Display */}
-      <Card className="p-8 border border-border bg-card space-y-6">
-        <div className="text-center">
-          <h2 className="text-lg font-semibold text-foreground mb-2">{participant.name}</h2>
-          <p className="text-muted-foreground">Event Check-In</p>
-        </div>
+      {/* Loading and Error States */}
+      {loading && (
+        <Card className="p-8 border border-border bg-card text-center">
+          <p className="text-muted-foreground">Loading your QR code...</p>
+        </Card>
+      )}
 
-        {/* QR Code */}
-        <div className="bg-muted p-8 rounded-lg border border-border">
-          <div className="aspect-square bg-white rounded flex items-center justify-center">
-            <div className="w-48 h-48 bg-gray-200 rounded flex items-center justify-center text-sm text-gray-500">
-              QR Code
-            </div>
-          </div>
-        </div>
-
-        {/* Barcode */}
-        <div className="bg-muted p-6 rounded-lg border border-border">
-          <div className="h-20 bg-white rounded flex items-center justify-center text-sm text-gray-500">
-            Barcode
-          </div>
-        </div>
-
-        {/* Code */}
-        <div className="bg-muted p-4 rounded-lg text-center">
-          <p className="text-xs text-muted-foreground mb-2">Check-In Code</p>
-          <p className="font-mono text-lg font-bold text-foreground">{participant.qrCode}</p>
-        </div>
-
-        <Button
-          className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground gap-2"
-          onClick={() => console.log('Download QR code')}
-        >
-          <Download className="w-4 h-4" />
-          Download All Codes
-        </Button>
-      </Card>
+      {error && !loading && (
+        <Card className="p-8 border border-border bg-card text-center">
+          <p className="text-destructive">{error}</p>
+        </Card>
+      )}
     </div>
   )
 }

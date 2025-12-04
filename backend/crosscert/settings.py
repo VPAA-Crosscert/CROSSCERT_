@@ -5,10 +5,9 @@ import os
 from pathlib import Path
 
 # Apply runtime monkeypatches (safe no-op if Django not available yet)
+# REQUIRED: Django 5.1's native __copy__ is broken on Python 3.14
+# This patch fixes the "'super' object has no attribute 'dicts'" error
 try:
-    # This module replaces a fragile Context.__copy__ implementation on some
-    # Python/Django combinations that can raise "'super' object has no
-    # attribute 'dicts'" during admin form rendering.
     from . import patch_template_context  # noqa: F401
 except Exception:
     pass
@@ -30,6 +29,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'corsheaders',
+    'markdownx',
     'events',
     'participants',
     'certificates',
@@ -76,6 +76,10 @@ DATABASES = {
         'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
+
+# Default primary key field type (Django 3.2+)
+# Using BigAutoField for better scalability and to avoid warnings
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},

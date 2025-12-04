@@ -109,6 +109,7 @@ class EvaluationViewSet(viewsets.ModelViewSet):
         if not hasattr(registration, "certificate_record"):
             try:
                 service = CertificateService()
+                # Generate base64 PDF for now (no disk write required)
                 pdf_base64 = service.generate_for_participant(
                     registration, registration.event, save_to_disk=False
                 )

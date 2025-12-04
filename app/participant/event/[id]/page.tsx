@@ -123,7 +123,7 @@ export default function ParticipantEventDetail() {
             const bookmarks = new Set(JSON.parse(storedBookmarks))
             setIsBookmarked(bookmarks.has(eventId))
           }
-
+          
           // Determine registration status from backend (authoritative) using current user email
           let derivedStatus: 'registered' | 'checked-in' | 'evaluated' | 'none' = 'none'
           try {
@@ -282,7 +282,7 @@ export default function ParticipantEventDetail() {
     } catch (err) {
       console.warn('[Registration] Could not fetch user profile, using defaults:', err)
       // Fallback: parse name from email
-      const emailParts = userEmail.split('@')[0].split('.')
+    const emailParts = userEmail.split('@')[0].split('.')
       firstName = emailParts[0] || 'Participant'
       lastName = emailParts.slice(1).join(' ') || 'User'
     }
@@ -461,7 +461,7 @@ export default function ParticipantEventDetail() {
     } else if (registrationStatus === 'registered' || registrationStatus === 'checked-in') {
       const normalizedStatus = (eventStatus || '').toLowerCase()
       if (normalizedStatus === 'completed') {
-        handleEvaluation()
+      handleEvaluation()
       } else {
         alert('This event has not been concluded yet. Evaluations will be available once the event organizer concludes the event.')
       }

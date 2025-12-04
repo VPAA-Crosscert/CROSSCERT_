@@ -11,9 +11,7 @@ from django.db.models import Q
 import uuid
 import os
 from datetime import datetime
-from django.core.mail import send_mail
-from django.template.loader import render_to_string
-from django.utils.html import strip_tags
+from django.core.mail import EmailMessage, send_mail
 from markdownx.models import MarkdownxField
 from certificates.validators import validate_landscape_certificate, validate_certificate_image_format
 
@@ -229,35 +227,38 @@ class Certificate(models.Model):
 
     def send_certificate_email(self, request=None):
         """Send certificate via email to the participant."""
-        from django.core.mail import EmailMultiAlternatives
-        from django.template.loader import render_to_string
-        from django.utils.html import strip_tags
-        
         if not self.certificate_file:
             return False
             
         subject = f"Your Certificate for {self.registration.event.title}"
-        html_message = render_to_string('emails/certificate_email.html', {
-            'participant_name': self.registration.full_name,
-            'event_title': self.registration.event.title,
-            'event_date': self.registration.event.date,
-            'certificate_url': self.certificate_file.url if hasattr(self.certificate_file, 'url') else '#'
-        })
-        plain_message = strip_tags(html_message)
+        # Simple plain-text email with PDF attachment using Django's configured backend (Gmail SMTP)
+        message = f"""
+Dear {self.registration.full_name},
+
+Congratulations! Your certificate for {self.registration.event.title} is ready.
+
+Event Date: {self.registration.event.date}
+
+Your certificate is attached as a PDF to this email. You can also access it in your CROSSCERT account.
+
+Best regards,
+CROSSCERT Team
+        """.strip()
         
         try:
-            # Using Brevo SMTP to send the email
-            send_mail(
+            email = EmailMessage(
                 subject=subject,
-                message=plain_message,
-                from_email='crosscert.dvo@gmail.com',
-                recipient_list=[self.registration.email],
-                html_message=html_message,
-                fail_silently=False,
-                auth_user='9d3a64001@smtp-brevo.com',
-                auth_password=settings.BREVO_SMTP_PASSWORD,
-                connection=None,
+                body=message,
+                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'crosscert.dvo@gmail.com'),
+                to=[self.registration.email],
             )
+            # Attach the certificate file
+            try:
+                email.attach_file(self.certificate_file.path)
+            except Exception as attach_err:
+                print(f"Failed to attach certificate file: {attach_err}")
+
+            email.send(fail_silently=False)
             self.is_emailed = True
             self.email_sent_at = datetime.now()
             self.save()

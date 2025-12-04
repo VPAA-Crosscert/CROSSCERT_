@@ -94,43 +94,67 @@ export default function Certificates() {
     fetchCertificates()
   }, [])
 
-  const handleViewCertificate = async (cert: CertificateRecord) => {
-    if (!cert.pdf_file) {
-      alert('Certificate file is not available yet. Please contact the administrator.')
-      return
-    }
+  const base64ToBlob = (base64: string, contentType = 'application/pdf'): Blob => {
+    // Handle possible data URL prefix
+    const parts = base64.split(',')
+    const rawBase64 = parts.length > 1 ? parts[1] : parts[0]
 
+    const byteChars = atob(rawBase64)
+    const byteNumbers = new Array(byteChars.length)
+    for (let i = 0; i < byteChars.length; i++) {
+      byteNumbers[i] = byteChars.charCodeAt(i)
+    }
+    const byteArray = new Uint8Array(byteNumbers)
+    return new Blob([byteArray], { type: contentType })
+  }
+
+  const handleViewCertificate = async (cert: CertificateRecord) => {
     try {
-      // Construct the full URL for the certificate file
-      const fileUrl = cert.pdf_file.startsWith('http')
-        ? cert.pdf_file
-        : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${cert.pdf_file}`
-      
-      // Open in new tab
-      window.open(fileUrl, '_blank')
+      if (cert.pdf_file) {
+        // Construct the full URL for the certificate file
+        const fileUrl = cert.pdf_file.startsWith('http')
+          ? cert.pdf_file
+          : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${cert.pdf_file}`
+        window.open(fileUrl, '_blank')
+        return
+      }
+
+      if (cert.pdf_base64) {
+        const blob = base64ToBlob(cert.pdf_base64, 'application/pdf')
+        const url = window.URL.createObjectURL(blob)
+        window.open(url, '_blank')
+        // We don't revoke immediately to allow viewing; browser will clean up later
+        return
+      }
+
+      alert('Certificate file is not available yet. Please contact the administrator.')
     } catch (err: any) {
       alert(err.message || 'Failed to open certificate.')
     }
   }
 
   const handleDownloadCertificate = async (cert: CertificateRecord) => {
-    if (!cert.pdf_file) {
-      alert('Certificate file is not available yet. Please contact the administrator.')
-      return
-    }
-
     try {
-      // Construct the full URL for the certificate file
-      const fileUrl = cert.pdf_file.startsWith('http')
-        ? cert.pdf_file
-        : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${cert.pdf_file}`
-      
-      const response = await fetch(fileUrl)
-      if (!response.ok) {
-        throw new Error('Failed to download certificate')
+      let blob: Blob | null = null
+
+      if (cert.pdf_file) {
+        const fileUrl = cert.pdf_file.startsWith('http')
+          ? cert.pdf_file
+          : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${cert.pdf_file}`
+        const response = await fetch(fileUrl)
+        if (!response.ok) {
+          throw new Error('Failed to download certificate')
+        }
+        blob = await response.blob()
+      } else if (cert.pdf_base64) {
+        blob = base64ToBlob(cert.pdf_base64, 'application/pdf')
       }
-      
-      const blob = await response.blob()
+
+      if (!blob) {
+        alert('Certificate file is not available yet. Please contact the administrator.')
+        return
+      }
+
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
@@ -266,7 +290,7 @@ export default function Certificates() {
                   </div>
 
                   <div className="flex gap-2 pt-2">
-                    {cert.pdf_file ? (
+                    {cert.pdf_file || cert.pdf_base64 ? (
                       <>
                         <Button
                           variant="outline"

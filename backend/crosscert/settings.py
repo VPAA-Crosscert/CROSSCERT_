@@ -111,15 +111,15 @@ os.makedirs(os.path.join(MEDIA_ROOT, CERTIFICATE_UPLOAD_TO), exist_ok=True)
 os.makedirs(os.path.join(MEDIA_ROOT, CERTIFICATE_TEMPLATE_UPLOAD_TO), exist_ok=True)
 os.makedirs(os.path.dirname(DEFAULT_FONT), exist_ok=True)
 
-# Email Configuration (Brevo SMTP)
+# Email Configuration (Gmail SMTP)
+# Prefer environment variables, but fall back to the provided Gmail app password for local/dev
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp-relay.brevo.com'
+EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = '9d3a64001@smtp-brevo.com'
-# Note: In production, use environment variables for sensitive data
-EMAIL_HOST_PASSWORD = os.getenv('BREVO_SMTP_PASSWORD', 'your_brevo_smtp_password')
-DEFAULT_FROM_EMAIL = 'crosscert.dvo@gmail.com'
+EMAIL_HOST_USER = os.getenv('SENDER_EMAIL', 'crosscert.dvo@gmail.com')
+EMAIL_HOST_PASSWORD = os.getenv('SENDER_PASSWORD', 'bpoj jamo wdzh ewui')
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # REST Framework configuration
 REST_FRAMEWORK = {

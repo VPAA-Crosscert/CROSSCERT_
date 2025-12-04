@@ -64,6 +64,8 @@ class EventSerializer(serializers.ModelSerializer):
 class EventRegistrationSerializer(serializers.ModelSerializer):
     """Serializer for EventRegistration model."""
 
+    is_checked_out = serializers.SerializerMethodField()
+
     class Meta:
         model = EventRegistration
         fields = [
@@ -76,11 +78,28 @@ class EventRegistrationSerializer(serializers.ModelSerializer):
             'registered_at',
             'is_present',
             'has_evaluated',
+            'is_checked_out',
             'qr_code',
             'qr_code_value',
             'barcode_image',
         ]
-        read_only_fields = ['qr_code', 'qr_code_value', 'barcode_image', 'registered_at', 'is_present', 'has_evaluated']
+        read_only_fields = [
+            'qr_code',
+            'qr_code_value',
+            'barcode_image',
+            'registered_at',
+            'is_present',
+            'has_evaluated',
+            'is_checked_out',
+        ]
+
+    def get_is_checked_out(self, obj):
+        """Return True if the participant has a check-in record with a check_out_at timestamp."""
+        try:
+            check_in = obj.check_in
+            return bool(check_in.check_out_at)
+        except CheckIn.DoesNotExist:
+            return False
 
 
 class CheckInSerializer(serializers.ModelSerializer):

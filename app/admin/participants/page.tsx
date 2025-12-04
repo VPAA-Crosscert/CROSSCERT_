@@ -25,6 +25,7 @@ type RegistrationRecord = {
   registered_at?: string
   is_present?: boolean
   has_evaluated?: boolean
+  is_checked_out?: boolean
 }
 
 export default function AdminParticipants() {
@@ -41,6 +42,7 @@ export default function AdminParticipants() {
       registered_at?: string
       is_present?: boolean
       has_evaluated?: boolean
+      is_checked_out?: boolean
     }[]
   >([])
   const [error, setError] = useState('')
@@ -95,6 +97,7 @@ export default function AdminParticipants() {
               registered_at: reg.registered_at,
               is_present: reg.is_present,
               has_evaluated: reg.has_evaluated,
+              is_checked_out: reg.is_checked_out,
             }))
           : []
 
@@ -190,17 +193,27 @@ export default function AdminParticipants() {
                   </td>
                   <td className="px-6 py-3 text-sm">
                     <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4 text-green-500" />
-                        <span className="text-green-600">Registered</span>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-green-500" />
+                      <span className="text-green-600">Registered</span>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        {participant.is_present && !participant.has_evaluated && (
+                        {/* Checked in but not yet checked out */}
+                        {participant.is_present && !participant.is_checked_out && !participant.has_evaluated && (
                           <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                             Checked In
                           </span>
+                      )}
+
+                        {/* Checked out but not yet evaluated */}
+                        {participant.is_checked_out && !participant.has_evaluated && (
+                          <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                            Checked Out
+                          </span>
                         )}
-                        {participant.has_evaluated && (
+
+                        {/* Evaluated (implies checked out) */}
+                      {participant.has_evaluated && (
                           <>
                             <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
                               Checked Out
@@ -209,8 +222,10 @@ export default function AdminParticipants() {
                               Evaluated
                             </span>
                           </>
-                        )}
-                        {!participant.is_present && !participant.has_evaluated && (
+                      )}
+
+                        {/* No activity yet */}
+                        {!participant.is_present && !participant.is_checked_out && !participant.has_evaluated && (
                           <span className="text-xs text-muted-foreground">
                             Not yet checked in
                           </span>

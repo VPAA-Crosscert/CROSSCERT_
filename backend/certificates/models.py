@@ -2,12 +2,11 @@
 Certificate models for CROSSCERT.
 """
 from django.db import models
-from django.core.mail import send_mail
+from django.core.mail import EmailMessage
 from django.conf import settings
-from django.template.loader import render_to_string
-from django.utils.html import strip_tags
 from events.models import EventRegistration
 from datetime import datetime
+import base64
 
 
 class Certificate(models.Model):
@@ -37,7 +36,7 @@ class Certificate(models.Model):
         try:
             subject = f"Your Certificate for {self.registration.event.title}"
             
-            # Create email message
+            # Create plain-text email message
             message = f"""
 Dear {self.registration.first_name},
 
@@ -51,28 +50,34 @@ Your certificate has been generated and is available in your account. You can vi
 Best regards,
 CROSSCERT Team
             """
-            
-            # Try to use Brevo SMTP if configured
-            try:
-                send_mail(
-                    subject=subject,
-                    message=message,
-                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'crosscert.dvo@gmail.com'),
-                    recipient_list=[self.registration.email],
-                    fail_silently=False,
-                    auth_user=getattr(settings, 'BREVO_SMTP_USER', None),
-                    auth_password=getattr(settings, 'BREVO_SMTP_PASSWORD', None),
-                )
-            except Exception as e:
-                # Fallback to default email backend
-                print(f"[Certificate Email] Brevo SMTP failed, trying default: {e}")
-                send_mail(
-                    subject=subject,
-                    message=message,
-                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@crosscert.com'),
-                    recipient_list=[self.registration.email],
-                    fail_silently=False,
-                )
+
+            email = EmailMessage(
+                subject=subject,
+                body=message,
+                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'crosscert.dvo@gmail.com'),
+                to=[self.registration.email],
+            )
+
+            # Attach PDF certificate
+            if self.pdf_file:
+                # If a file is stored on disk, attach it directly
+                try:
+                    email.attach_file(self.pdf_file.path)
+                except Exception as attach_err:
+                    print(f"[Certificate Email] Failed to attach pdf_file: {attach_err}")
+            elif self.pdf_base64:
+                # Decode base64 and attach as PDF bytes
+                try:
+                    # Handle potential data URL prefix
+                    parts = self.pdf_base64.split(',')
+                    raw_base64 = parts[1] if len(parts) > 1 else parts[0]
+                    pdf_bytes = base64.b64decode(raw_base64)
+                    filename = f"{self.certificate_number}.pdf"
+                    email.attach(filename, pdf_bytes, 'application/pdf')
+                except Exception as decode_err:
+                    print(f"[Certificate Email] Failed to decode/attach pdf_base64: {decode_err}")
+
+            email.send(fail_silently=False)
             
             # Update status
             self.status = 'sent'

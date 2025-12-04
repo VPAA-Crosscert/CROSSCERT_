@@ -232,7 +232,7 @@ class CertificateService:
             event_data,
             template_image=event.certificate_template_image,
             coordinates=event.certificate_coordinates,
-            sample_text=event.certificate_sample_text,
+            sample_text=None,
             output_path=output_path,
             return_base64=not save_to_disk,
         )

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Upload, MapPin, CalendarIcon, Clock, Users, Ruler, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -110,6 +110,14 @@ export default function CreateEventPage() {
   const [sampleEventTitle, setSampleEventTitle] = useState('Sample Event Title')
   const [sampleDate, setSampleDate] = useState('January 01, 2025')
 
+  // Drag & drop state for coordinate mapping
+  const [draggingField, setDraggingField] = useState<keyof typeof INITIAL_COORDINATES | null>(null)
+  const certificatePreviewRef = useRef<HTMLDivElement | null>(null)
+
+  // Actual certificate image size (from uploaded template); used so
+  // coordinates match the real PDF dimensions from the backend.
+  const [certificateSize, setCertificateSize] = useState(CERTIFICATE_DIMENSION)
+
   const totalSteps = 6
 
   const isStep1Valid = eventName && eventDescription && eventDate && startTime && endTime && venue
@@ -177,6 +185,16 @@ export default function CreateEventPage() {
     }
     setCertificateError('')
     setCertificateTemplate(dataUrl)
+
+    // Detect actual image dimensions so coordinate system matches backend
+    const img = new Image()
+    img.onload = () => {
+      setCertificateSize({
+        width: img.width || CERTIFICATE_DIMENSION.width,
+        height: img.height || CERTIFICATE_DIMENSION.height,
+      })
+    }
+    img.src = dataUrl
   }
 
   const handleCoordinateChange = (field: keyof typeof INITIAL_COORDINATES, axis: 'x' | 'y', value: number) => {
@@ -188,6 +206,56 @@ export default function CreateEventPage() {
       },
     }))
   }
+
+  // Handle drag start for overlay text
+  const handleDragStart = (field: keyof typeof INITIAL_COORDINATES, e: React.MouseEvent<HTMLSpanElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDraggingField(field)
+  }
+
+  // Global mouse move / up listeners for dragging
+  useEffect(() => {
+    if (!draggingField) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!certificatePreviewRef.current) return
+      const rect = certificatePreviewRef.current.getBoundingClientRect()
+
+      // Clamp pointer inside the preview bounds
+      const clampedX = Math.min(Math.max(e.clientX, rect.left), rect.right)
+      const clampedY = Math.min(Math.max(e.clientY, rect.top), rect.bottom)
+
+      const relX = clampedX - rect.left
+      const relYFromTop = clampedY - rect.top
+
+      // Convert from DOM coordinates (origin top-left) to certificate coordinates (origin bottom-left)
+      const x = (relX / rect.width) * certificateSize.width
+      const yFromBottom =
+        certificateSize.height - (relYFromTop / rect.height) * certificateSize.height
+
+      setCertificateCoordinates(prev => ({
+        ...prev,
+        [draggingField]: {
+          ...prev[draggingField],
+          x: Math.round(x),
+          y: Math.round(yFromBottom),
+        },
+      }))
+    }
+
+    const handleMouseUp = () => {
+      setDraggingField(null)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [draggingField, certificateSize.height, certificateSize.width])
 
   const handleCreateEvent = async () => {
     // Post event to backend API
@@ -535,7 +603,9 @@ export default function CreateEventPage() {
               <Upload className="w-6 h-6 text-muted-foreground" />
               <span className="text-sm">{certificateTemplate ? 'Replace template' : 'Upload certificate template'}</span>
               <span className="text-xs text-muted-foreground">
-                Required size: {CERTIFICATE_DIMENSION.width} x {CERTIFICATE_DIMENSION.height} px
+                {certificateTemplate
+                  ? `Detected size: ${certificateSize.width} x ${certificateSize.height} px`
+                  : 'Any landscape size is supported; coordinates will match the image size.'}
               </span>
             </label>
           </div>
@@ -559,8 +629,68 @@ export default function CreateEventPage() {
           <h2 className="text-2xl font-bold text-foreground">Step 4 · Coordinate Mapping</h2>
           <p className="text-sm text-muted-foreground flex items-center gap-2">
             <Ruler className="w-4 h-4" />
-            Provide the exact X/Y coordinates where each field should appear.
+            Drag the text directly on the certificate preview, or fine-tune with the X/Y inputs.
           </p>
+          {/* Visual drag-and-drop preview */}
+          <div
+            ref={certificatePreviewRef}
+            className="relative border border-border rounded-lg overflow-hidden bg-muted"
+            style={{ paddingBottom: '70%' }}
+          >
+            {certificateTemplate ? (
+              <>
+                {/* Template image */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={certificateTemplate}
+                  alt="Certificate template"
+                  className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none"
+                />
+                {/* Draggable text overlays */}
+                <div className="absolute inset-0">
+                  <span
+                    className="absolute text-2xl font-bold text-primary uppercase tracking-wide cursor-move select-none"
+                    style={{
+                      left: `${(certificateCoordinates.name.x / certificateSize.width) * 100}%`,
+                      bottom: `${(certificateCoordinates.name.y / certificateSize.height) * 100}%`,
+                      transform: 'translate(-50%, 50%)',
+                    }}
+                    onMouseDown={(e) => handleDragStart('name', e)}
+                  >
+                    {sampleName}
+                  </span>
+                  <span
+                    className="absolute text-lg font-semibold text-foreground cursor-move select-none"
+                    style={{
+                      left: `${(certificateCoordinates.eventTitle.x / certificateSize.width) * 100}%`,
+                      bottom: `${(certificateCoordinates.eventTitle.y / certificateSize.height) * 100}%`,
+                      transform: 'translate(-50%, 50%)',
+                    }}
+                    onMouseDown={(e) => handleDragStart('eventTitle', e)}
+                  >
+                    {sampleEventTitle || eventName}
+                  </span>
+                  <span
+                    className="absolute text-base text-foreground cursor-move select-none"
+                    style={{
+                      left: `${(certificateCoordinates.date.x / certificateSize.width) * 100}%`,
+                      bottom: `${(certificateCoordinates.date.y / certificateSize.height) * 100}%`,
+                      transform: 'translate(-50%, 50%)',
+                    }}
+                    onMouseDown={(e) => handleDragStart('date', e)}
+                  >
+                    {sampleDate || eventDate}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
+                Upload a certificate template in Step 3 to position the text overlays.
+              </div>
+            )}
+          </div>
+
+          {/* Optional fine-tuning inputs */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               { label: 'Participant Name', key: 'name' as const },
@@ -693,8 +823,8 @@ export default function CreateEventPage() {
                   <span
                     className="absolute text-2xl font-bold text-primary uppercase tracking-wide"
                     style={{
-                      left: `${(certificateCoordinates.name.x / CERTIFICATE_DIMENSION.width) * 100}%`,
-                      bottom: `${(certificateCoordinates.name.y / CERTIFICATE_DIMENSION.height) * 100}%`,
+                      left: `${(certificateCoordinates.name.x / certificateSize.width) * 100}%`,
+                      bottom: `${(certificateCoordinates.name.y / certificateSize.height) * 100}%`,
                       transform: 'translate(-50%, 50%)',
                     }}
                   >
@@ -703,8 +833,8 @@ export default function CreateEventPage() {
                   <span
                     className="absolute text-lg font-semibold text-foreground"
                     style={{
-                      left: `${(certificateCoordinates.eventTitle.x / CERTIFICATE_DIMENSION.width) * 100}%`,
-                      bottom: `${(certificateCoordinates.eventTitle.y / CERTIFICATE_DIMENSION.height) * 100}%`,
+                      left: `${(certificateCoordinates.eventTitle.x / certificateSize.width) * 100}%`,
+                      bottom: `${(certificateCoordinates.eventTitle.y / certificateSize.height) * 100}%`,
                       transform: 'translate(-50%, 50%)',
                     }}
                   >
@@ -713,8 +843,8 @@ export default function CreateEventPage() {
                   <span
                     className="absolute text-base text-foreground"
                     style={{
-                      left: `${(certificateCoordinates.date.x / CERTIFICATE_DIMENSION.width) * 100}%`,
-                      bottom: `${(certificateCoordinates.date.y / CERTIFICATE_DIMENSION.height) * 100}%`,
+                      left: `${(certificateCoordinates.date.x / certificateSize.width) * 100}%`,
+                      bottom: `${(certificateCoordinates.date.y / certificateSize.height) * 100}%`,
                       transform: 'translate(-50%, 50%)',
                     }}
                   >

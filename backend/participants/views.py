@@ -77,8 +77,17 @@ class EvaluationViewSet(viewsets.ModelViewSet):
     serializer_class = EvaluationSerializer
 
     def perform_create(self, serializer):
-        evaluation = serializer.save()
-        registration = evaluation.registration
+        """
+        Create an evaluation only if the participant has checked in AND checked out.
+        Also ensure we don't create duplicate evaluations for the same registration.
+        """
+        registration = serializer.validated_data.get("registration")
+        if not registration:
+            raise ValidationError("Registration is required for evaluation.")
+
+        # Prevent duplicate evaluations for the same registration
+        if Evaluation.objects.filter(registration=registration).exists():
+            raise ValidationError("You have already submitted an evaluation for this event.")
 
         # Require both check-in and check-out before accepting evaluation
         try:
@@ -89,15 +98,38 @@ class EvaluationViewSet(viewsets.ModelViewSet):
         if not check_in.check_out_at:
             raise ValidationError("You must check out before submitting an evaluation.")
 
+        # All good – now save the evaluation
+        evaluation = serializer.save()
+
+        # Mark evaluation as complete on the registration
+        registration.mark_evaluation_complete()
+
         # Auto-generate certificate if not already present
-        if not hasattr(registration, "certificate"):
-            service = CertificateService()
-            pdf_base64 = service.generate_for_participant(registration, registration.event, save_to_disk=False)
-            cert_number = f"CERT-{registration.event.id}-{uuid.uuid4().hex[:8].upper()}"
-            Certificate.objects.create(
-                registration=registration,
-                certificate_number=cert_number,
-                status="generated",
-                pdf_base64=pdf_base64,
-                issue_date=timezone.now().date(),
-            )
+        certificate = None
+        if not hasattr(registration, "certificate_record"):
+            try:
+                service = CertificateService()
+                pdf_base64 = service.generate_for_participant(
+                    registration, registration.event, save_to_disk=False
+                )
+                cert_number = f"CERT-{registration.event.id}-{uuid.uuid4().hex[:8].upper()}"
+                certificate = Certificate.objects.create(
+                    registration=registration,
+                    certificate_number=cert_number,
+                    status="generated",
+                    pdf_base64=pdf_base64,
+                    issue_date=timezone.now().date(),
+                )
+            except Exception as e:
+                # Log error but don't fail the evaluation submission
+                print(f"[Evaluation] Error generating certificate: {e}")
+        else:
+            certificate = registration.certificate_record
+
+        # Automatically send certificate email after evaluation submission
+        if certificate:
+            try:
+                certificate.send_certificate_email()
+            except Exception as e:
+                # Log error but don't fail the evaluation submission
+                print(f"[Evaluation] Error sending certificate email: {e}")

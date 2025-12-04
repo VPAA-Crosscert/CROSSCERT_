@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, Calendar, Users, BarChart3, Settings, LogOut, QrCode, Search, Menu, X } from 'lucide-react'
+import { LayoutDashboard, Calendar, Users, BarChart3, Settings, LogOut, QrCode, Search, Menu, X, FileText, Star } from 'lucide-react'
 import { useState } from 'react'
 import { Input } from '@/components/ui/input'
 
@@ -16,6 +16,8 @@ export function AdminSidebar() {
     { icon: Calendar, label: 'Events', href: '/admin/events' },
     { icon: Users, label: 'Participants', href: '/admin/participants' },
     { icon: QrCode, label: 'Check-In', href: '/admin/checkin' },
+    { icon: Star, label: 'Evaluations', href: '/admin/evaluations' },
+    { icon: FileText, label: 'Certificates', href: '/admin/certificates' },
     { icon: BarChart3, label: 'Insights', href: '/admin/insights' },
     { icon: Settings, label: 'Settings', href: '/admin/settings' },
   ]

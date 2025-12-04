@@ -74,11 +74,13 @@ class EventRegistrationSerializer(serializers.ModelSerializer):
             'last_name',
             'affiliation',
             'registered_at',
+            'is_present',
+            'has_evaluated',
             'qr_code',
             'qr_code_value',
             'barcode_image',
         ]
-        read_only_fields = ['qr_code', 'qr_code_value', 'barcode_image', 'registered_at']
+        read_only_fields = ['qr_code', 'qr_code_value', 'barcode_image', 'registered_at', 'is_present', 'has_evaluated']
 
 
 class CheckInSerializer(serializers.ModelSerializer):

@@ -3,7 +3,7 @@
 import { useRouter, useParams } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, MapPin, Calendar, Users, Edit, Trash2 } from 'lucide-react'
+import { ArrowLeft, MapPin, Calendar, Users, Edit, Trash2, CheckCircle } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { getEventById, getStoredEvents } from '@/lib/event-context'
 import { Event } from '@/lib/event-context'
@@ -15,6 +15,7 @@ export default function AdminEventDetail() {
   const [event, setEvent] = useState<Event | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [isConcluding, setIsConcluding] = useState(false)
 
   useEffect(() => {
     const fetchEvent = async () => {
@@ -137,6 +138,47 @@ export default function AdminEventDetail() {
     router.push(`/admin/events/${params.id}/edit`)
   }
 
+  const handleConcludeEvent = async () => {
+    if (!event) return
+    
+    // Check status (backend uses lowercase, frontend might use different format)
+    const currentStatus = (event.status || '').toLowerCase()
+    if (currentStatus === 'completed') {
+      alert('This event is already concluded.')
+      return
+    }
+
+    if (!confirm('Are you sure you want to conclude this event? Once concluded, participants will be able to submit evaluations.')) {
+      return
+    }
+
+    setIsConcluding(true)
+    try {
+      const eventUrl = adminApi.eventById(event.id)
+      const concludeUrl = `${eventUrl}conclude/`
+      
+      console.log('[Conclude Event] Concluding event:', concludeUrl)
+      const response = await apiCall.post(concludeUrl, {})
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to conclude event')
+      }
+
+      const data = await response.json()
+      console.log('[Conclude Event] ✅ Event concluded:', data)
+      
+      // Update event status in state
+      setEvent({ ...event, status: 'completed' as any })
+      alert('Event concluded successfully! Participants can now submit evaluations.')
+    } catch (err: any) {
+      console.error('[Conclude Event] Error:', err)
+      alert(err.message || 'Failed to conclude event. Please try again.')
+    } finally {
+      setIsConcluding(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-6 text-center">
@@ -218,7 +260,14 @@ export default function AdminEventDetail() {
 
             <Card className="p-4 border border-border bg-card">
               <p className="text-sm text-muted-foreground mb-2">Status</p>
-              <p className="font-semibold text-foreground">{event.status}</p>
+              <p className={`font-semibold ${
+                (event.status || '').toLowerCase() === 'completed' ? 'text-green-600' :
+                (event.status || '').toLowerCase() === 'live' ? 'text-blue-600' :
+                (event.status || '').toLowerCase() === 'scheduled' ? 'text-yellow-600' :
+                'text-foreground'
+              }`}>
+                {(event.status || 'draft').charAt(0).toUpperCase() + (event.status || 'draft').slice(1)}
+              </p>
             </Card>
           </div>
 
@@ -234,6 +283,24 @@ export default function AdminEventDetail() {
         {/* Sidebar Actions */}
         <div className="space-y-4">
           <Card className="p-6 border border-border bg-card sticky top-20 space-y-4">
+            {(event.status || '').toLowerCase() !== 'completed' && (
+              <Button
+                className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold gap-2"
+                onClick={handleConcludeEvent}
+                disabled={isConcluding}
+              >
+                <CheckCircle className="w-4 h-4" />
+                {isConcluding ? 'Concluding...' : 'Conclude Event'}
+              </Button>
+            )}
+            
+            {(event.status || '').toLowerCase() === 'completed' && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-md text-center">
+                <p className="text-sm font-semibold text-green-800">Event Concluded</p>
+                <p className="text-xs text-green-600 mt-1">Evaluations are now enabled</p>
+              </div>
+            )}
+
             <Button
               className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground font-semibold gap-2"
               onClick={handleEdit}

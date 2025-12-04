@@ -32,6 +32,7 @@ type EventWithRegistration = {
   endTime?: string
   location?: string
   venue?: string
+  status?: string
   registration: Registration
 }
 
@@ -360,7 +361,7 @@ export default function MyEvents() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      {!evaluated && attended && (
+                      {!evaluated && attended && (event.status === 'completed' || (event.status || '').toLowerCase() === 'completed') && (
                         <Button
                           size="sm"
                           className="bg-orange-500 hover:bg-orange-600 text-white"
@@ -368,6 +369,11 @@ export default function MyEvents() {
                         >
                           Evaluate
                         </Button>
+                      )}
+                      {!evaluated && attended && event.status !== 'completed' && (event.status || '').toLowerCase() !== 'completed' && (
+                        <div className="text-xs text-muted-foreground flex items-center">
+                          <span>Evaluation pending event conclusion</span>
+                        </div>
                       )}
                       {evaluated && (
                         <Button

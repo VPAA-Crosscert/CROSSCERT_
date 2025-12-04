@@ -14,6 +14,7 @@ type EventRecord = {
   id: number
   title?: string
   name?: string
+  status?: string
 }
 
 export default function AdminCheckIn() {
@@ -29,6 +30,7 @@ export default function AdminCheckIn() {
   const [participantName, setParticipantName] = useState('')
   const [checkedInCount, setCheckedInCount] = useState(0)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [lastAction, setLastAction] = useState<'check-in' | 'check-out' | null>(null)
   const [eventsLoading, setEventsLoading] = useState(true)
   const [eventsError, setEventsError] = useState('')
   const [isProcessingScan, setIsProcessingScan] = useState(false)
@@ -77,12 +79,13 @@ export default function AdminCheckIn() {
           ? data 
           : (data.results || data.data || [])
 
-        // Validate each event - handle both 'title' and 'name' properties
+        // Validate each event - handle both 'title' and 'name' properties, and keep status
         const validEvents = events
           .filter((evt) => evt && evt.id)
           .map((evt) => ({
             id: evt.id,
             title: evt.title || evt.name || `Event #${evt.id}`,
+            status: evt.status,
           }))
         
         setEvents(validEvents)
@@ -112,7 +115,7 @@ export default function AdminCheckIn() {
     }
 
     try {
-      const res = await apiCall.post(`${api.checkIns()}/check-in-by-code/`, {
+      const res = await apiCall.post(`${api.checkIns()}check-in-by-code/`, {
         code: code.trim(),
       })
       const data = await res.json()
@@ -125,6 +128,7 @@ export default function AdminCheckIn() {
       setParticipantName(`${data.participant_name ?? 'Participant'}`)
       setCheckedInCount(prev => prev + 1)
       setShowSuccess(true)
+      setLastAction('check-in')
 
       // Reset after showing success
       setTimeout(() => {
@@ -324,7 +328,7 @@ export default function AdminCheckIn() {
     }
 
     try {
-      const res = await apiCall.post(`${api.checkIns()}/check-in-by-code/`, {
+      const res = await apiCall.post(`${api.checkIns()}check-in-by-code/`, {
         code: scannedCode.trim(),
       })
       const data = await res.json()
@@ -336,6 +340,7 @@ export default function AdminCheckIn() {
       setParticipantName(`${data.participant_name ?? 'Participant'}`)
       setCheckedInCount(prev => prev + 1)
       setShowSuccess(true)
+      setLastAction('check-in')
 
       setTimeout(() => {
         setScannedCode('')
@@ -343,6 +348,48 @@ export default function AdminCheckIn() {
       }, 2000)
     } catch (err) {
       alert('Network error while checking in participant.')
+    }
+  }
+
+  const handleCheckOut = async () => {
+    if (!selectedEvent) {
+      alert('Please select an event first')
+      return
+    }
+
+    // Only allow check-out when event is completed
+    const event = events.find(e => e.id.toString() === selectedEvent)
+    const normalizedStatus = (event?.status || '').toLowerCase()
+    if (normalizedStatus !== 'completed') {
+      alert('You can only check out participants after the event has been concluded.')
+      return
+    }
+
+    if (!scannedCode.trim()) {
+      alert('Please enter a code or scan a QR code')
+      return
+    }
+
+    try {
+      const res = await apiCall.post(`${api.checkIns()}check-out-by-code/`, {
+        code: scannedCode.trim(),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error || data.message || 'Unable to check out participant.')
+        return
+      }
+
+      setParticipantName(`${data.participant_name ?? 'Participant'}`)
+      setShowSuccess(true)
+      setLastAction('check-out')
+
+      setTimeout(() => {
+        setScannedCode('')
+        setShowSuccess(false)
+      }, 2000)
+    } catch (err) {
+      alert('Network error while checking out participant.')
     }
   }
 
@@ -480,13 +527,23 @@ export default function AdminCheckIn() {
               />
             </div>
 
-            <Button
-              className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground font-semibold"
-              size="lg"
-              onClick={handleScan}
-            >
-              Check In Participant
-            </Button>
+            <div className="flex flex-col gap-2">
+              <Button
+                className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground font-semibold"
+                size="lg"
+                onClick={handleScan}
+              >
+                Check In Participant
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full font-semibold"
+                size="lg"
+                onClick={handleCheckOut}
+              >
+                Check Out Participant
+              </Button>
+            </div>
           </Card>
 
           {/* Success Feedback */}
@@ -498,7 +555,9 @@ export default function AdminCheckIn() {
                 </div>
                 <div>
                   <p className="font-semibold text-green-900">{participantName}</p>
-                  <p className="text-sm text-green-700">Successfully checked in</p>
+                  <p className="text-sm text-green-700">
+                    {lastAction === 'check-out' ? 'Successfully checked out' : 'Successfully checked in'}
+                  </p>
                 </div>
               </div>
             </Card>

@@ -27,7 +27,7 @@ export interface Event {
   createdAt?: string
   category?: string
   department?: string
-  status?: 'Upcoming' | 'Ongoing' | 'Completed'
+  status?: 'Upcoming' | 'Ongoing' | 'Completed' | 'draft' | 'scheduled' | 'live' | 'completed'
   code_prefix?: string // Backend property for event code prefix
 }
 

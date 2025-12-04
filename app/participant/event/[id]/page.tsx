@@ -46,6 +46,7 @@ export default function ParticipantEventDetail() {
   } | null>(null)
   const [hasAccess, setHasAccess] = useState(true)
   const [userDepartment, setUserDepartment] = useState('')
+  const [eventStatus, setEventStatus] = useState<string>('')
 
   useEffect(() => {
     const fetchEvent = async () => {
@@ -74,6 +75,7 @@ export default function ParticipantEventDetail() {
           }
           
           setEvent(apiEvent as Event)
+          setEventStatus(apiEvent.status || '')
           
           // Check access control - fetch user department from API
           const userDept = await fetchUserDepartment()
@@ -115,27 +117,60 @@ export default function ParticipantEventDetail() {
           setHasAccess(canAccess)
           console.log('[Event Detail] Has access:', canAccess)
           
-          setLoading(false)
-          
           // Load bookmark status from localStorage
           const storedBookmarks = localStorage.getItem('bookmarkedEvents')
           if (storedBookmarks) {
             const bookmarks = new Set(JSON.parse(storedBookmarks))
             setIsBookmarked(bookmarks.has(eventId))
           }
+
+          // Determine registration status from backend (authoritative) using current user email
+          let derivedStatus: 'registered' | 'checked-in' | 'evaluated' | 'none' = 'none'
+          try {
+            const userEmail = await getAuthenticatedUserEmail()
+            if (userEmail) {
+              const regsUrl = `${api.registrations()}?event=${eventId}&email=${encodeURIComponent(userEmail)}`
+              const regsRes = await apiCall.get(regsUrl)
+              if (regsRes.ok) {
+                const regsData = await regsRes.json()
+                const regs = Array.isArray(regsData) ? regsData : (regsData.results || regsData.data || [])
+                if (regs.length > 0) {
+                  const reg = regs[0]
+                  if (reg.has_evaluated) {
+                    derivedStatus = 'evaluated'
+                  } else if (reg.is_present) {
+                    derivedStatus = 'checked-in'
+                  } else {
+                    derivedStatus = 'registered'
+                  }
+                }
+              }
+            }
+          } catch (regErr) {
+            console.warn('[Participant Event Detail] Could not fetch registration for status:', regErr)
+          }
+
+          // Fallback to local stored status if backend didn't give us anything
+          if (derivedStatus === 'none') {
+            derivedStatus = getRegistrationStatus(eventId)
+          }
+
+          setRegistrationStatus(derivedStatus)
           
-          const status = getRegistrationStatus(eventId)
-          setRegistrationStatus(status)
-          
-          if (status === 'registered') {
-            setButtonLabel('Check In')
-          } else if (status === 'checked-in') {
-            setButtonLabel('Complete Evaluation')
-          } else if (status === 'evaluated') {
+          const normalizedStatus = (apiEvent.status || '').toLowerCase()
+          if (derivedStatus === 'registered') {
+            // Participant is registered; evaluation is allowed only after event is completed
+            setButtonLabel(normalizedStatus === 'completed' ? 'Complete Evaluation' : 'Evaluation Pending')
+          } else if (derivedStatus === 'checked-in') {
+            // Checked-in by admin – evaluation still gated by event completion
+            setButtonLabel(normalizedStatus === 'completed' ? 'Complete Evaluation' : 'Evaluation Pending')
+          } else if (derivedStatus === 'evaluated') {
             setButtonLabel('View Certificate')
           } else {
             setButtonLabel(canAccess ? 'Register Now' : 'Restricted')
           }
+
+          setLoading(false)
           return
         } else {
           console.warn('[Participant Event Detail] ❌ API request failed, status:', response.status)
@@ -148,6 +183,7 @@ export default function ParticipantEventDetail() {
       console.log('[Participant Event Detail] Falling back to localStorage search')
       const foundEvent = getEventById(eventId)
       setEvent(foundEvent)
+      setEventStatus(foundEvent?.status || '')
       
       // Check access control for localStorage events too
       const userDept = await fetchUserDepartment()
@@ -181,10 +217,9 @@ export default function ParticipantEventDetail() {
       const status = getRegistrationStatus(eventId)
       setRegistrationStatus(status)
       
+      const normalizedStatus = (foundEvent?.status || '').toLowerCase()
       if (status === 'registered') {
-        setButtonLabel('Check In')
-      } else if (status === 'checked-in') {
-        setButtonLabel('Complete Evaluation')
+        setButtonLabel(normalizedStatus === 'completed' ? 'Complete Evaluation' : 'Evaluation Pending')
       } else if (status === 'evaluated') {
         setButtonLabel('View Certificate')
       } else {
@@ -407,14 +442,12 @@ export default function ParticipantEventDetail() {
     }
   }
 
-  const handleCheckIn = () => {
-    updateRegistrationStatus(params.id as string, 'checked-in')
-    setRegistrationStatus('checked-in')
-    setButtonLabel('Complete Evaluation')
-    router.push(`/participant/event/${params.id}/evaluation`)
-  }
-
   const handleEvaluation = () => {
+    // Only allow evaluation if event is completed
+    if (eventStatus !== 'completed') {
+      alert('This event has not been concluded yet. Evaluations will be available once the event organizer concludes the event.')
+      return
+    }
     router.push(`/participant/event/${params.id}/evaluation`)
   }
 
@@ -425,10 +458,13 @@ export default function ParticipantEventDetail() {
   const handleMainAction = () => {
     if (registrationStatus === 'none') {
       handleRegister()
-    } else if (registrationStatus === 'registered') {
-      handleCheckIn()
-    } else if (registrationStatus === 'checked-in') {
-      handleEvaluation()
+    } else if (registrationStatus === 'registered' || registrationStatus === 'checked-in') {
+      const normalizedStatus = (eventStatus || '').toLowerCase()
+      if (normalizedStatus === 'completed') {
+        handleEvaluation()
+      } else {
+        alert('This event has not been concluded yet. Evaluations will be available once the event organizer concludes the event.')
+      }
     } else if (registrationStatus === 'evaluated') {
       handleViewCertificate()
     }

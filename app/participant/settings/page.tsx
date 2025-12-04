@@ -56,14 +56,14 @@ export default function Settings() {
               console.warn('[Settings] Could not parse birthday:', user.birthday)
             }
           }
-          
-          setFormData({
+    
+    setFormData({
             name: user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || '',
             email: user.email || '',
             department: user.department || '',
             program: user.program || '',
             birthday: birthdayFormatted,
-          })
+    })
           
           console.log('[Settings] Form data set:', {
             name: user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username,
@@ -101,13 +101,13 @@ export default function Settings() {
       // For now, just show success message
       // The backend would need a PATCH endpoint at /api/auth/me/ to update profile
       console.log('[Settings] Saving birthday:', formData.birthday)
-      
+    
       // Note: This would require a backend endpoint to update the profile
       // For now, we'll just show a success message
-      setTimeout(() => {
-        setIsSaving(false)
-        alert('Settings saved successfully!')
-      }, 800)
+    setTimeout(() => {
+      setIsSaving(false)
+      alert('Settings saved successfully!')
+    }, 800)
     } catch (err) {
       console.error('[Settings] Error saving:', err)
       setIsSaving(false)
@@ -204,18 +204,18 @@ export default function Settings() {
           </div>
         </Card>
       ) : (
-        <Card className="p-6 border border-border bg-card space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="name" className="text-foreground">Full Name</Label>
-            <Input
-              id="name"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              placeholder="Your full name"
-              className="bg-background border-border text-foreground"
-            />
-          </div>
+      <Card className="p-6 border border-border bg-card space-y-6">
+        <div className="space-y-2">
+          <Label htmlFor="name" className="text-foreground">Full Name</Label>
+          <Input
+            id="name"
+            name="name"
+            value={formData.name}
+            onChange={handleChange}
+            placeholder="Your full name"
+            className="bg-background border-border text-foreground"
+          />
+        </div>
 
         <div className="space-y-2">
           <Label htmlFor="email" className="text-foreground">Email Address</Label>
@@ -266,15 +266,15 @@ export default function Settings() {
           />
         </div>
 
-          <Button
-            disabled={isSaving}
-            className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground gap-2"
-            onClick={handleSave}
-          >
-            <Save className="w-4 h-4" />
-            {isSaving ? 'Saving...' : 'Save Changes'}
-          </Button>
-        </Card>
+        <Button
+          disabled={isSaving}
+          className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground gap-2"
+          onClick={handleSave}
+        >
+          <Save className="w-4 h-4" />
+          {isSaving ? 'Saving...' : 'Save Changes'}
+        </Button>
+      </Card>
       )}
     </div>
   )

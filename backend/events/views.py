@@ -92,6 +92,27 @@ class EventViewSet(viewsets.ModelViewSet):
         serializer = EventRegistrationSerializer(registrations, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def conclude(self, request, pk=None):
+        """Conclude an event - change status to 'completed'."""
+        event = self.get_object()
+        
+        # Only allow staff/admin to conclude events
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Only administrators can conclude events.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        event.status = 'completed'
+        event.save(update_fields=['status'])
+        
+        serializer = self.get_serializer(event)
+        return Response({
+            'message': 'Event concluded successfully.',
+            'event': serializer.data
+        }, status=status.HTTP_200_OK)
+
 
 class EventRegistrationViewSet(viewsets.ModelViewSet):
     """ViewSet for Event Registration management."""
@@ -256,6 +277,11 @@ class CheckInViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Registration not found'}, status=status.HTTP_404_NOT_FOUND)
 
         check_in, created = CheckIn.objects.get_or_create(registration=registration)
+        # Keep EventRegistration.is_present in sync with CheckIn
+        if not registration.is_present:
+            registration.is_present = True
+            registration.save(update_fields=['is_present'])
+
         if not created and check_in.check_out_at is None:
             return Response({'message': 'Already checked in'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -287,6 +313,14 @@ class CheckInViewSet(viewsets.ModelViewSet):
             registration = EventRegistration.objects.get(qr_code_value=code_value)
         except EventRegistration.DoesNotExist:
             return Response({'error': 'Registration not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Enforce that check-out is only allowed once the event is concluded/completed
+        event = registration.event
+        if (event.status or '').lower() != 'completed':
+            return Response(
+                {'error': 'Event must be concluded before participants can be checked out.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             check_in = CheckIn.objects.get(registration=registration)

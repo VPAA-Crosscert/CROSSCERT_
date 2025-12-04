@@ -22,7 +22,7 @@ type DashboardEvent = {
   cover_image?: string
   coverImage?: string
   is_public?: boolean
-  isPublic?: boolean // Frontend property (camelCase)
+  isPublic?: boolean
 }
 
 export default function ParticipantDashboard() {

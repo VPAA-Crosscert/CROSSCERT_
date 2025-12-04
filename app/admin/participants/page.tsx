@@ -189,15 +189,33 @@ export default function AdminParticipants() {
                     )}
                   </td>
                   <td className="px-6 py-3 text-sm">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 text-green-500" />
-                      <span className="text-green-600">Registered</span>
-                      {participant.is_present && (
-                        <span className="text-xs text-blue-600">• Checked In</span>
-                      )}
-                      {participant.has_evaluated && (
-                        <span className="text-xs text-purple-600">• Evaluated</span>
-                      )}
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-500" />
+                        <span className="text-green-600">Registered</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {participant.is_present && !participant.has_evaluated && (
+                          <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                            Checked In
+                          </span>
+                        )}
+                        {participant.has_evaluated && (
+                          <>
+                            <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                              Checked Out
+                            </span>
+                            <span className="inline-flex items-center rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
+                              Evaluated
+                            </span>
+                          </>
+                        )}
+                        {!participant.is_present && !participant.has_evaluated && (
+                          <span className="text-xs text-muted-foreground">
+                            Not yet checked in
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>

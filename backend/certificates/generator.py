@@ -158,28 +158,6 @@ class CertificateGenerator:
         event_date = text_overrides.get('date') or event_data.get('date', 'January 01, 2025')
         self._draw_text(c, event_date, coords.get('date', {}), size=18)
 
-        # Organizer signature placeholder
-        organizer = event_data.get('organizer', '')
-        signature_y = coords.get('signature', {}).get('y', 160)
-        c.setLineWidth(1)
-        c.line(self.page_width * 0.2, signature_y, self.page_width * 0.8, signature_y)
-        self._draw_text(
-            c,
-            organizer or 'Office of the VPAA',
-            {'x': self.page_width / 2, 'y': signature_y - 20},
-            size=12,
-        )
-
-        # Watermark
-        self._draw_text(
-            c,
-            'pinay.py',
-            {'x': self.page_width - 24, 'y': 24},
-            font='Helvetica-Bold',
-            size=12,
-            align='right',
-        )
-
         c.showPage()
         c.save()
         pdf_bytes = buffer.getvalue()
